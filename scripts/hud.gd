@@ -93,7 +93,7 @@ func _process(_delta: float) -> void:
 
 	# Trajectory mode (set by the Line2D's `mode` enum).
 	var mode_val: int = int(trajectory_line.get("mode")) if trajectory_line != null else -1
-	var mode_str: String = "ORBITAL" if mode_val == 1 else ("TRUE" if mode_val == 0 else "—")
+	var mode_str: String = "PROJECTED" if mode_val == 1 else ("ELLIPSE" if mode_val == 0 else "—")
 	trajectory_label.text = "Trajectory [Tab]: %s" % mode_str
 
 	# Camera mode (FIXED = follow rocket, FREE = manual pan).

@@ -1,48 +1,54 @@
 extends Line2D
 ##
-## Predicts the rocket's trajectory. Two modes:
+## Predicts the rocket's trajectory. Two modes (toggle with Tab):
 ##
-## - TRUE (heliocentric): draws the full closed orbital ellipse of the
-##   rocket around the sun, computed in closed form from current (r, v).
-##   No integration, no jitter — exact at any time scale.
-## - ORBITAL (planetocentric): within a planet's SOI, shows the orbit
-##   around that planet (analytical ellipse).
+## - ELLIPSE: closed-form orbital prediction. Auto-switches to the nearest
+##   planet's orbit when the rocket is inside its SOI (Hill sphere ×
+##   soi_fraction); otherwise shows the heliocentric sun orbit. No
+##   integration, no jitter — exact at any time scale.
+## - PROJECTED: forward-simulated trajectory under sun + every planet's
+##   gravity (planet positions sampled via closed-form math at each step).
+##   Shows what actually happens with perturbations, slingshots, etc.
 ##
-## Toggle with the configured action (default: Tab).
 ## `top_level = true` keeps the line in world coordinates.
-## The sun's mass is read dynamically each frame — change `sun.mass`
-## in the inspector and the trajectory updates without restart.
+## The sun's mass is read dynamically each frame.
 ##
 
-enum Mode { TRUE, ORBITAL }
+enum Mode { ELLIPSE, PROJECTED }
 
 ## Current trajectory mode. Toggle with `toggle_action` (default: Tab).
-@export var mode: Mode = Mode.TRUE
+@export var mode: Mode = Mode.ELLIPSE
 
-## Input action name that toggles between TRUE and ORBITAL modes.
+## Input action name that toggles between ELLIPSE and PROJECTED modes.
 ## Default "toggle_trajectory_mode" (the Tab key).
 @export var toggle_action: String = "toggle_trajectory_mode"
 
 
-# TRUE-mode parameters
+# ELLIPSE-mode parameters
 
 ## Number of segments used when drawing the closed orbital ellipse for
 ## the trajectory line. Higher = smoother curve but more compute per
 ## frame. Closed ellipse (not a fading prediction), so 64-128 is plenty.
 @export var ellipse_segments: int = 128
 
-
-# ORBITAL-mode parameters
-
 ## SOI = Hill sphere × this fraction. The Hill sphere is the radius at
 ## which the planet's gravity equals the sun's; we use a fraction of it
 ## as the SOI cutoff so the inner half is "definitely orbiting the planet"
 ## and the outer half is transition zone (where the sun starts to dominate).
-## 0.5 is the common default.
+## 0.5 is the common default. Used by ELLIPSE mode to auto-switch to
+## the planet orbit when the rocket is in range.
 @export var soi_fraction: float = 0.5
 
-## Number of polygon vertices used to draw the ORBITAL-mode ellipse.
-@export var orbit_segments: int = 64
+
+# PROJECTED-mode parameters
+
+## Number of simulation steps for PROJECTED-mode forward sim.
+## Higher = longer predicted path but more compute per frame.
+@export var projected_steps: int = 300
+
+## Time step (seconds) per PROJECTED-mode simulation step. The total
+## predicted time is projected_steps * projected_step_dt (default: 15s).
+@export var projected_step_dt: float = 0.05
 
 
 # Visual
@@ -51,23 +57,26 @@ enum Mode { TRUE, ORBITAL }
 ## camera zoom so the line stays readable at any zoom level.
 @export var line_width: float = 2.0
 
-## Color of the line in TRUE mode (heliocentric closed ellipse).
-@export var true_color: Color = Color(1.0, 0.5, 0.5, 0.7)
+## ELLIPSE mode color when showing the heliocentric sun orbit.
+@export var closed_form_sun_color: Color = Color(1.0, 0.5, 0.5, 0.7)
 
-## Color of the line in ORBITAL mode (planetocentric ellipse).
-@export var orbital_color: Color = Color(0.5, 1.0, 0.7, 0.7)
+## ELLIPSE mode color when showing a planet orbit (auto-switched when
+## the rocket is inside the planet's SOI).
+@export var closed_form_planet_color: Color = Color(0.5, 1.0, 0.7, 0.7)
+
+## PROJECTED mode color (forward-simulated trajectory with all gravity).
+@export var projected_color: Color = Color(0.4, 0.7, 1.0, 0.7)
 
 
 # Time markers — small dots showing where the rocket will be at
-# t+interval, t+2*interval, t+3*interval (etc.) along the closed
-# orbit. Markers are sampled in world space, projected to screen;
-# off-screen markers are dropped (strict visibility).
+# t+interval, t+2*interval, t+3*interval (etc.) along the trajectory.
+# In ELLIPSE mode, markers use closed-form math (exact on the orbital
+# ellipse). In PROJECTED mode, markers are sampled along the
+# forward-simulated polyline (showing perturbations).
 #
 # Implementation: a "conveyor" array tracks each marker's remaining
 # time. Each physics tick the counters decrement; when one hits 0,
-# it recycles to the next interval. The marker's WORLD position is
-# computed via orbit_calculator.compute_state at (GameTime.current +
-# time_remaining), so each marker's screen position is exact.
+# it recycles to the next interval. Off-screen markers are dropped.
 
 ## Time interval (seconds) between consecutive orbit markers.
 ## Smaller = more markers, denser visual.
@@ -77,7 +86,7 @@ enum Mode { TRUE, ORBITAL }
 @export var time_marker_radius: float = 2.5
 
 ## Fill color of marker dots. Bright yellow with high alpha to stand
-## out against the red TRUE-mode line.
+## out against both the red ELLIPSE-sun line and the blue PROJECTED line.
 @export var time_marker_color: Color = Color(1.0, 0.95, 0.2, 0.95)
 
 ## Edge buffer (pixels) for off-screen marker culling. 0 = strict
@@ -101,7 +110,7 @@ const TimeMarkerScene: PackedScene = preload("res://scenes/time_marker.tscn")
 
 
 # Cached reference to the rocket. Read each frame for current position
-# and velocity (the closed-form orbit is computed from this).
+# and velocity (the trajectory is computed from this).
 var rocket: Node2D = null
 
 # Cached reference to the sun (heaviest body in "attractors"). Mass
@@ -124,8 +133,8 @@ var _time_marker: Control
 # Sized by `time_marker_count` in _ready.
 var _marker_times: PackedFloat32Array = PackedFloat32Array()
 
-# The planet whose Hill sphere contains the rocket (in ORBITAL mode).
-# Instance var so _process can read it across frames. null when not
+# The planet whose Hill sphere contains the rocket. Used by ELLIPSE
+# mode to auto-switch between sun and planet orbits. null when not
 # within any planet's SOI.
 var central_planet: Node2D = null
 
@@ -135,7 +144,7 @@ var central_planet: Node2D = null
 func _ready() -> void:
 	top_level = true
 	width = line_width
-	default_color = true_color
+	default_color = closed_form_sun_color
 	rocket = get_parent()
 	sun = _find_sun()
 
@@ -195,7 +204,7 @@ func _process(_delta: float) -> void:
 		sun_mass = float(sun.get("mass"))
 
 	if Input.is_action_just_pressed(toggle_action):
-		mode = Mode.ORBITAL if mode == Mode.TRUE else Mode.TRUE
+		mode = Mode.PROJECTED if mode == Mode.ELLIPSE else Mode.ELLIPSE
 
 	# No trajectory line or markers while landed — the planet's own orbit
 	# line (planettrajectoryline_2d) already shows where the planet is going.
@@ -210,20 +219,18 @@ func _process(_delta: float) -> void:
 	# Marker conveyor: each marker's time_remaining ticks down; when it
 	# hits 0, recycle to the next interval so the conveyor always shows
 	# markers at "interval, 2*interval, 3*interval" into the future.
-	if mode == Mode.ORBITAL and central_planet != null:
-		_time_marker.update_positions(PackedVector2Array())
-	else:
-		for i in range(_marker_times.size()):
-			_marker_times[i] -= _delta
-			if _marker_times[i] <= 0.0:
-				_marker_times[i] = time_marker_interval * float(time_marker_count)
+	for i in range(_marker_times.size()):
+		_marker_times[i] -= _delta
+		if _marker_times[i] <= 0.0:
+			_marker_times[i] = time_marker_interval * float(time_marker_count)
 
-		# Sample each marker at its future time using the closed-form orbit
-		# math. Each marker represents the rocket's position at
-		# (GameTime.current + time_remaining), so we ask orbit_calculator
-		# for that absolute time. Closed-form = no jitter near planets.
+	# Sample markers differently per mode:
+	# - ELLIPSE: closed-form math (exact on the orbital ellipse).
+	# - PROJECTED: indices into the forward-simulated polyline (shows
+	#   perturbations from planet gravity).
+	var marker_positions: PackedVector2Array = PackedVector2Array()
+	if mode == Mode.ELLIPSE:
 		var elements := _compute_elements_from_state(rocket.global_position, rocket.velocity, sun_mass)
-		var marker_positions: PackedVector2Array = PackedVector2Array()
 		if not elements.is_empty():
 			for time_remaining in _marker_times:
 				var t_marker: float = GameTime.current + time_remaining
@@ -233,16 +240,27 @@ func _process(_delta: float) -> void:
 					t_marker, sun_mass
 				)
 				marker_positions.append(state["position"])
-		_time_marker.update_positions(_world_to_screen_markers(marker_positions))
+	else:  # PROJECTED
+		for time_remaining in _marker_times:
+			var index: int = int(time_remaining / projected_step_dt)
+			if index < 0:
+				index = 0
+			elif index >= points.size():
+				index = points.size() - 1
+			marker_positions.append(points[index])
+
+	_time_marker.update_positions(_world_to_screen_markers(marker_positions))
 
 
-## Determine the current mode (TRUE vs ORBITAL) and recompute the trajectory.
-## In ORBITAL mode, sets `central_planet` if the rocket is inside a planet's
-## SOI; otherwise falls back to TRUE mode even if mode == ORBITAL.
+## Detect central_planet (rocket inside a planet's SOI) and recompute
+## the trajectory for the current mode. In ELLIPSE mode, auto-switch
+## between sun orbit and planet orbit based on SOI membership.
 func _update() -> void:
 	var attractors := get_tree().get_nodes_in_group("attractors")
 
-	# Find the closest planet whose Hill sphere contains the rocket (if any).
+	# Detect central_planet: rocket inside this planet's SOI (Hill sphere × soi_fraction).
+	# Used by ELLIPSE mode to auto-switch between sun and planet orbits.
+	central_planet = null
 	if sun != null and sun_mass > 0.0:
 		var closest_dist: float = INF
 		for body in attractors:
@@ -257,23 +275,29 @@ func _update() -> void:
 					closest_dist = d
 					central_planet = body
 
-	if mode == Mode.ORBITAL and central_planet != null:
-		default_color = orbital_color
-		points = _compute_planetocentric_ellipse(central_planet)
-		# ORBITAL mode markers not yet implemented — _process will clear them.
-	else:
-		default_color = true_color
-		# TRUE mode: full closed-form ellipse from current (r, v) state.
-		# Closed-form = exact, no jitter near gravity wells, no drift.
-		points = _orbit_ellipse(
-			rocket.global_position, rocket.velocity,
-			sun_mass, ellipse_segments, Vector2.ZERO
-		)
+	match mode:
+		Mode.ELLIPSE:
+			# Auto-switch: if rocket is in a planet's SOI, show that planet's
+			# orbit; otherwise show the heliocentric sun orbit. The user doesn't
+			# need to toggle ORBITAL manually — happens automatically based on
+			# proximity.
+			if central_planet != null:
+				default_color = closed_form_planet_color
+				points = _compute_planetocentric_ellipse(central_planet)
+			else:
+				default_color = closed_form_sun_color
+				points = _orbit_ellipse(
+					rocket.global_position, rocket.velocity,
+					sun_mass, ellipse_segments, Vector2.ZERO
+				)
+		Mode.PROJECTED:
+			default_color = projected_color
+			points = _simulate_projected(attractors)
 
 
-## ORBITAL mode: analytical orbit ellipse around a planet (planetocentric
-## frame). Same math as TRUE mode but in the planet's reference frame
-## (rocket pos/vel relative to planet, gravitational parameter = planet's).
+## ORBITAL-mode helper (within ELLIPSE): analytical orbit ellipse around
+## a planet (planetocentric frame). Same math as the sun-orbit ellipse
+## but in the planet's reference frame.
 func _compute_planetocentric_ellipse(planet: Node2D) -> PackedVector2Array:
 	var planet_pos: Vector2 = planet.global_position
 	var planet_vel: Vector2 = Vector2(planet.get("velocity"))
@@ -283,7 +307,7 @@ func _compute_planetocentric_ellipse(planet: Node2D) -> PackedVector2Array:
 	var v: Vector2 = rocket.velocity - planet_vel
 
 	var mu: float = G * float(planet.get("mass"))
-	return _orbit_ellipse(r, v, mu, orbit_segments, planet_pos)
+	return _orbit_ellipse(r, v, mu, ellipse_segments, planet_pos)
 
 
 ## Convert current (r, v) state to orbital elements (perihelion, aphelion,
@@ -355,6 +379,74 @@ func _orbit_ellipse(r: Vector2, v: Vector2, mu: float, segs: int, offset: Vector
 		var r_orbit: float = a * one_minus_e_sq / (1.0 + e * cos(theta - omega))
 		pts.append(offset + Vector2(r_orbit * cos(theta), r_orbit * sin(theta)))
 	pts.append(pts[0])  # close the loop — last sample is at theta = (n-1)/n * TAU, missing the segment back to 0
+	return pts
+
+
+## Forward-simulate the rocket under sun + every planet's gravity.
+## Planet positions are sampled at each future time via the closed-form
+## orbit math (so planet motion is exact), and the rocket is integrated
+## with symplectic Euler (sufficient for visualization; the planet-motion
+## precision means the dominant error source is the rocket itself, which
+## we'd need a much smaller step_dt to reduce further).
+##
+## Returns a polyline at projected_step_dt intervals from t=0 to
+## t=projected_steps * projected_step_dt.
+##
+## This shows the trajectory the rocket would ACTUALLY take, including
+## perturbations, slingshots, etc. — distinct from ELLIPSE mode which
+## shows the idealized 2-body orbit.
+func _simulate_projected(attractors: Array) -> PackedVector2Array:
+	if sun == null or sun_mass <= 0.0:
+		return PackedVector2Array()
+
+	# Cache each planet's orbital elements once (avoid re-reading each step).
+	var planet_specs: Array = []
+	for body in attractors:
+		if body == sun or body == rocket:
+			continue
+		var m: float = float(body.get("mass"))
+		if m <= 0.0:
+			continue
+		planet_specs.append({
+			"mass": m,
+			"perihelion": float(body.get("perihelion")),
+			"aphelion": float(body.get("aphelion")),
+			"angle_of_aphelion": float(body.get("angle_of_aphelion")),
+			"phase": float(body.get("phase"))
+		})
+
+	var pts: PackedVector2Array = PackedVector2Array()
+	pts.append(rocket.global_position)
+
+	var r: Vector2 = rocket.global_position
+	var v: Vector2 = rocket.velocity
+
+	var dt: float = projected_step_dt
+	for i in projected_steps:
+		# Acceleration from the sun.
+		var to_sun: Vector2 = -r
+		var r_sun: float = maxf(to_sun.length(), MIN_DIST)
+		var a: Vector2 = to_sun.normalized() * (G * sun_mass / (r_sun * r_sun))
+
+		# Acceleration from each planet (planet position sampled at this future time).
+		for spec in planet_specs:
+			var t_future: float = GameTime.current + float(i + 1) * dt
+			var state: Dictionary = OrbitCalculator.compute_state(
+				spec["perihelion"], spec["aphelion"],
+				spec["angle_of_aphelion"], spec["phase"],
+				t_future, sun_mass
+			)
+			var planet_pos: Vector2 = state["position"]
+			var to_planet: Vector2 = planet_pos - r
+			var r_p: float = maxf(to_planet.length(), MIN_DIST)
+			a += to_planet.normalized() * (G * spec["mass"] / (r_p * r_p))
+
+		# Symplectic Euler integration. Velocity Verlet would be slightly
+		# more accurate but not worth the added complexity for visualization.
+		v += a * dt
+		r += v * dt
+		pts.append(r)
+
 	return pts
 
 
