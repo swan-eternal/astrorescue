@@ -173,10 +173,17 @@ func _compute_orbit_markers() -> PackedVector2Array:
 	var sun_mass_val: float = float(sun.get("mass"))
 	if sun_mass_val <= 0.0:
 		return markers
-	var orbit_radius_val: float = float(planet.get("orbit_radius"))
-	if orbit_radius_val <= 0.0:
+	# Read orbital elements instead of the legacy orbit_radius @export
+	# (which was removed in Stage 2 when planet.gd switched to closed-form
+	# orbital elements). Semi-major axis = average of perihelion/aphelion.
+	# For circular orbits perihelion == aphelion == a; for elliptical this
+	# gives the correct average.
+	var perihelion: float = float(planet.get("perihelion"))
+	var aphelion: float = float(planet.get("aphelion"))
+	if perihelion <= 0.0 or aphelion <= 0.0:
 		return markers
-	var period: float = TAU * sqrt(orbit_radius_val * orbit_radius_val * orbit_radius_val / (G * sun_mass_val))
+	var a: float = (perihelion + aphelion) / 2.0
+	var period: float = TAU * sqrt(a * a * a / (G * sun_mass_val))
 	if period <= 0.0:
 		return markers
 	var step_index: int = max(1, int(round(time_marker_interval * float(segments) / period)))
