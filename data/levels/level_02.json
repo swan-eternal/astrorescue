@@ -1,0 +1,66 @@
+{
+  "name": "Level 02",
+  "version": 2,
+
+  "bodies": [
+    {
+      "type": "sun",
+      "mass": 4000000,
+      "position": [-1, -3]
+    },
+    {
+      "type": "planet",
+      "name": "planet_alpha",
+      "is_home": false,
+      "has_astronaut": true,
+      "has_fuel": true,
+      "mass": 8000,
+      "radius": 30.0,
+      "color": [0.95, 0.65, 0.2, 1.0],
+      "perihelion": 1000.0,
+      "aphelion": 1000.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 0.0,
+      "fuel_orbit_radius": 40.0,
+      "fuel_orbit_speed": 0.5
+    },
+    {
+      "type": "planet",
+      "name": "planet_beta",
+      "is_home": false,
+      "has_astronaut": true,
+      "has_fuel": false,
+      "mass": 15000,
+      "radius": 45.0,
+      "color": [0.3, 0.55, 0.9, 1.0],
+      "perihelion": 2500.0,
+      "aphelion": 2500.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 1.5
+    },
+    {
+      "type": "planet",
+      "name": "planet_gamma",
+      "is_home": true,
+      "has_astronaut": false,
+      "has_fuel": false,
+      "mass": 25000,
+      "radius": 60.0,
+      "color": [0.85, 0.25, 0.3, 1.0],
+      "perihelion": 4500.0,
+      "aphelion": 4500.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 3.0
+    }
+  ],
+
+  "rocket": {
+    "initial_position": [3500.0, 0.0],
+    "initial_velocity": [0.0, 50.0],
+    "thrust_acceleration": 80.0,
+    "landing_speed_threshold": 80.0,
+    "crash_speed_threshold": 150.0,
+    "launch_speed": 100.0,
+    "starting_fuel": 100.0
+  }
+}

@@ -1,0 +1,27 @@
+[gd_scene format=3 load_steps=6 uid="uid://blevelshared0001"]
+
+[ext_resource type="Script" uid="uid://fp5hh41fxlfi" path="res://scripts/level_controller.gd" id="1_lctrl"]
+[ext_resource type="PackedScene" uid="uid://ccvxn8vitnrvf" path="res://scenes/rocket.tscn" id="2_rocket"]
+[ext_resource type="PackedScene" uid="uid://f287r1g8xsim" path="res://scenes/hud.tscn" id="3_hud"]
+[ext_resource type="Script" uid="uid://cqatk6q3c3jym" path="res://scripts/rocket_camera.gd" id="4_rcam"]
+[ext_resource type="Script" path="res://scripts/level_loader.gd" id="5_loader"]
+
+[node name="level" type="Node2D"]
+
+[node name="LevelController" type="Node" parent="."]
+script = ExtResource("1_lctrl")
+
+[node name="SunContainer" type="Node2D" parent="."]
+
+[node name="PlanetContainer" type="Node2D" parent="."]
+
+[node name="rocket" parent="." instance=ExtResource("2_rocket")]
+
+[node name="rocketCamera" type="Camera2D" parent="rocket"]
+zoom = Vector2(0.5, 0.5)
+script = ExtResource("4_rcam")
+
+[node name="hud" parent="." instance=ExtResource("3_hud")]
+
+[node name="LevelLoader" type="Node" parent="."]
+script = ExtResource("5_loader")

@@ -43,10 +43,11 @@ func _ready() -> void:
 
 ## Level-button handler: jump to the selected level. The level number
 ## is bound via .bind() in _ready so this single handler serves all
-## three buttons.
+## three buttons. Sets SaveState.current_level_number so the shared
+## level.tscn (loaded next) knows which JSON to read.
 func _on_level_selected(level_num: int) -> void:
-	var path: String = "res://scenes/level_%02d.tscn" % level_num
-	get_tree().change_scene_to_file(path)
+	SaveState.current_level_number = level_num
+	get_tree().change_scene_to_file("res://scenes/level.tscn")
 
 
 ## Back-button handler: return to the main menu.

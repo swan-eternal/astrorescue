@@ -41,7 +41,6 @@
   ],
 
   "rocket": {
-    "auto_snap_to_home": true,
     "initial_position": [3500.0, 0.0],
     "initial_velocity": [0.0, 50.0],
     "thrust_acceleration": 80.0,

@@ -17,11 +17,10 @@ func _ready() -> void:
 
 
 ## Restart-button handler: reload the current level.
-## MVP: hardcoded to level_01 since we only have one level. Phase 2 will
-## track the current level via SaveState (e.g., save_state.current_level_number)
-## so this works for any level.
+## Uses SaveState.current_level_number (set by level_select / main_menu
+## when the level was loaded) so Restart works for any level.
 func _on_restart_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/level_01.tscn")
+	get_tree().change_scene_to_file("res://scenes/level.tscn")
 
 
 ## Main-Menu-button handler: return to the title screen.

@@ -39,10 +39,12 @@ func _ready() -> void:
 
 ## Start-button handler: jump to the highest unlocked level (so a
 ## returning player resumes where they left off rather than restarting).
+## Sets SaveState.current_level_number so the shared level.tscn (loaded
+## next) knows which JSON to read.
 func _on_start_pressed() -> void:
 	var level_num: int = _highest_unlocked_level()
-	var path: String = "res://scenes/level_%02d.tscn" % level_num
-	get_tree().change_scene_to_file(path)
+	SaveState.current_level_number = level_num
+	get_tree().change_scene_to_file("res://scenes/level.tscn")
 
 
 ## Level-Select-button handler: open the level picker scene.
