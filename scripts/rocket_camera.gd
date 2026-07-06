@@ -11,29 +11,53 @@ extends Camera2D
 ##
 
 # --- Follow behavior (used when not in free-cam mode) ---
-@export var follow_speed: float = 5.0   # higher = snappier catch-up
+
+## How quickly the camera catches up to the rocket in follow mode.
+## `lerp` interpolates this fraction of the way to the target each
+## frame — at follow_speed=5 and 60fps, that's about 8% of the way
+## per frame (feels tight but not instant).
+@export var follow_speed: float = 5.0
 
 # --- Zoom (works in both modes) ---
+
+## Zoom change per mouse-wheel click. Positive = zoom in.
 @export var zoom_step: float = 0.15
+
+## Minimum zoom (camera pulled back). Smaller = see more of the system.
 @export var min_zoom: float = 0.1
+
+## Maximum zoom (camera pulled in). Larger = see less, more detail.
 @export var max_zoom: float = 3.0
 
 # --- Free-camera toggle ---
+
+## Input action name that toggles free-camera mode. Default "toggle_free_camera"
+## (the F key, per project.godot's input map).
 @export var toggle_free_action: String = "toggle_free_camera"
 
 
+# True when in free-camera mode (manual pan); false when following the rocket.
+# Toggled each frame in _process via the input action.
 var free_camera: bool = false
+
+# True while the left mouse button is held down in free-cam mode (panning).
 var _dragging: bool = false
+
+# Last observed mouse position during a drag — used to compute incremental
+# pan deltas (motion - last_pos), not absolute jumps.
 var _drag_last_pos: Vector2 = Vector2.ZERO
 
 
+## Set top_level so the camera's transform is in world coordinates and
+## ignores the rocket's rotation. Without this, the whole world would
+## spin as the rocket rotates.
 func _ready() -> void:
-	# `top_level = true` makes our transform be in world space, ignoring
-	# the rocket's rotation. Without this, the whole world would spin as
-	# the rocket rotates — which is disorienting and not what we want.
 	top_level = true
 
 
+## Each frame: handle the free-cam toggle and, if not in free-cam mode,
+## smoothly follow the rocket via `position.lerp`. Also gives a graceful
+## re-attach when toggling out of free-cam (no snap to the rocket).
 func _process(delta: float) -> void:
 	if Input.is_action_just_pressed(toggle_free_action):
 		free_camera = not free_camera
@@ -51,6 +75,8 @@ func _process(delta: float) -> void:
 		position = position.lerp(target_pos, follow_speed * delta)
 
 
+## Mouse handling: wheel = zoom, left-drag = pan (only in free-cam mode).
+## Single clicks in follow mode are ignored so they don't accidentally pan.
 func _unhandled_input(event: InputEvent) -> void:
 	# Mouse wheel: zoom (always available, regardless of mode).
 	if event is InputEventMouseButton and event.pressed:
@@ -84,6 +110,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		position -= motion / zoom
 
 
+## Apply a zoom delta and clamp to [min_zoom, max_zoom]. Used by the
+## mouse-wheel handler in _unhandled_input.
 func _zoom_by(delta_zoom: float) -> void:
 	var new_zoom := zoom + Vector2(delta_zoom, delta_zoom)
 	new_zoom = new_zoom.clamp(

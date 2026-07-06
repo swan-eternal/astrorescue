@@ -24,6 +24,11 @@ const COLOR_CRASH: Color = Color(1.0, 0.3, 0.3)     # red — rel_speed ≥ cras
 const COLOR_INACTIVE: Color = Color(1.0, 1.0, 1.0)  # white — no planet in range
 
 
+## Resolve cached references: the rocket (via "player" group), the
+## trajectory Line2D and Camera2D (both children of the rocket), and
+## the total astronaut count for this level. Runs once at scene load;
+## safe to fail gracefully (warnings instead of crashes) so the HUD
+## degrades to empty labels if the rocket isn't found yet.
 func _ready() -> void:
 	# Find the rocket via the "player" group (added in rocket.gd's _ready).
 	rocket = get_tree().get_first_node_in_group("player")
@@ -47,6 +52,9 @@ func _ready() -> void:
 			total_astronauts += 1
 
 
+## Update every HUD label each frame. Cheap work (a few label.text
+## assignments + modulate swaps) so the cost is dominated by the
+## _find_nearest_planet() distance scan.
 func _process(_delta: float) -> void:
 	if rocket == null:
 		return
@@ -109,10 +117,10 @@ func _process(_delta: float) -> void:
 		astronaut_label.text = "Astronauts: —"
 
 
-# Find the closest attractor that has a `radius` (a landable planet).
-# Used by the HUD to pick the reference body for relative-velocity display.
-# Mirrors rocket.gd's `_find_nearest_attractor` — kept separate so the HUD
-# doesn't need to reach into the rocket's internals.
+## Find the closest attractor that has a `radius` (a landable planet).
+## Used by the HUD to pick the reference body for relative-velocity display.
+## Mirrors rocket.gd's `_find_nearest_attractor` — kept separate so the HUD
+## doesn't need to reach into the rocket's internals.
 func _find_nearest_planet() -> Node2D:
 	var nearest: Node2D = null
 	var nearest_d2: float = INF

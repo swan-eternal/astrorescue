@@ -6,6 +6,8 @@ extends Control
 ## bottom. Clicking an enabled button loads the corresponding level scene.
 ##
 
+# Hardcoded upper bound on level numbering for the level_%02d.tscn
+# filename pattern. Bump this when adding new levels.
 const MAX_LEVEL: int = 3
 
 @onready var buttons: Array = [
@@ -17,6 +19,10 @@ const MAX_LEVEL: int = 3
 @onready var _audio_manager: Node = get_node("/root/AudioManager")
 
 
+## Wire up the back button, start the menu music, and enable/disable
+## each level button based on SaveState.is_level_unlocked(). Disabled
+## buttons display "Level N (locked)" so the player knows what they're
+## missing.
 func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
 
@@ -35,10 +41,14 @@ func _ready() -> void:
 			button.text = "Level %d (locked)" % level_num
 
 
+## Level-button handler: jump to the selected level. The level number
+## is bound via .bind() in _ready so this single handler serves all
+## three buttons.
 func _on_level_selected(level_num: int) -> void:
 	var path: String = "res://scenes/level_%02d.tscn" % level_num
 	get_tree().change_scene_to_file(path)
 
 
+## Back-button handler: return to the main menu.
 func _on_back_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")

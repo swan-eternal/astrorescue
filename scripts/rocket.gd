@@ -1,75 +1,158 @@
 extends Node2D
 ##
-## The player rocket — now controllable.
+## The player rocket — controllable spacecraft.
 ##
-## Step 6: orbits under sun's gravity, no input.
-## Step 7 (current): rotation + thrust input, _physics_process.
+## - Lives in group "player" so the HUD, indicators, and level_controller
+##   can find us via get_first_node_in_group("player").
+## - Listens to thrust/rotate/restart input each physics tick.
+## - Feels gravity from every body in the "attractors" group.
+## - Detects landing vs. crash via distance check against the nearest
+##   planet (skill §3.1: per-frame distance, not Area2D signals).
+## - On land, glues to the planet and matches its velocity; thrust
+##   unsticks (auto-oriented so the first thrust = launch).
+## - Carries fuel and astronaut pickups; refuels on fuel-pickup contact.
 ##
 
 # --- Visual ---
+
+## Triangle size — controls both the rendered Polygon2D and the
+## landing-collision tail reach. They must stay in sync (see
+## `tail_reach = size * 0.8` in _physics_process).
 @export var size: float = 10.0
+
+## Fill color for the rocket's triangle visual.
 @export var color: Color = Color(0.9, 0.95, 1.0)
 
 # --- Initial conditions ---
+
+## Spawn position used ONLY if no planet is flagged `is_home`.
+## Otherwise the rocket auto-snaps to the home planet's surface
+## in _snap_to_home_planet.
 @export var initial_position: Vector2 = Vector2(300.0, 0.0)
+
+## Spawn velocity used ONLY if no planet is flagged `is_home`.
+## Tangent to a circular orbit at initial_position, around the sun.
 @export var initial_velocity: Vector2 = Vector2(0.0, 115.0)
+
+## Starting fuel amount. Burned by thrust (see fuel_consumption_rate);
+## refilled by fuel pickups up to max_fuel.
 @export var fuel: float = 100.0
+
+## Maximum fuel cap — pickups can't push fuel above this.
 @export var max_fuel: float = 100.0
 
 # --- Controls ---
-@export var rotation_speed: float = 3.0        # radians per second
-@export var thrust_acceleration: float = 100.0  # units per second²
 
-# --- Collision ---
-@export var landing_speed_threshold: float = 8.0   # rel speed ≤ this → land
-@export var landing_buffer: float = 1.0             # extra pixels past visual contact
-@export var crash_speed_threshold: float = 30.0    # rel speed > this → crash
-@export var launch_speed: float = 30.0             # initial velocity when thrusting off a planet
+## Rotation speed when A/D (or arrow keys) are held. In radians per
+## second. 3.0 ≈ half-turn per second — increase for snappier ships.
+@export var rotation_speed: float = 3.0
 
+## Thrust acceleration when W/Up is held, along the rocket's nose.
+## In units per second².
+@export var thrust_acceleration: float = 100.0
 
-# --- Astronaut ---
-# Pickup is proximity-based on landing: pickup_radius = planet.radius × this.
-# Default 1.5. Tighter = more precise "near the astronaut" landings needed.
+# --- Collision (skill §3.1: distance-based, not Area2D signals) ---
+
+## Maximum relative speed for a contact to count as "soft" (else crash).
+## At rel_speed ≤ this on contact, the rocket sticks; > this, it crashes.
+@export var landing_speed_threshold: float = 8.0
+
+## Extra distance past the visual contact point at which the landing
+## trigger fires. Small overshoot so the rocket doesn't appear to
+## "land floating" right at the visual edge.
+@export var landing_buffer: float = 1.0
+
+## Minimum relative speed for a contact to count as a crash. Anything
+## in the gap (landing_speed_threshold, crash_speed_threshold) lands
+## as a crash because it's too fast to be safe.
+@export var crash_speed_threshold: float = 30.0
+
+## Initial launch speed when thrusting off a planet. Currently unused —
+## the launch is implicit (thrust unsticks + gravity does the rest).
+## Kept as a hook for future "boost on takeoff" gameplay.
+@export var launch_speed: float = 30.0
+
+# --- Astronaut pickup ---
+
+## Pickup is proximity-based on landing. The pickup zone is this
+## many times the planet's radius around the landing point.
+## Tighter (1.0) = more precise "near the astronaut" landings needed.
 @export var astronaut_pickup_radius_multiplier: float = 1.5
 
-
 # --- Fuel ---
-# Thrust burns fuel at this rate (units per second).
-# Dial down to ~0.5 for unconstrained testing, ~5 for normal play.
+
+## Fuel burned per second of thrust. At time warp 8×, this becomes
+## effectively 8× per real second (delta scales with Engine.time_scale).
+## Dial down to ~0.5 for unconstrained testing, ~5 for normal play.
 @export var fuel_consumption_rate: float = 5.0
-# Each pickup restores this much fuel, capped at max_fuel.
+
+## Fuel restored per pickup, capped at max_fuel.
 @export var fuel_pickup_amount: float = 50.0
-# Rocket-to-pickup distance below which the pickup is collected.
+
+## Rocket-to-pickup distance below which a fuel pickup is collected.
+## In world units.
 @export var fuel_pickup_radius: float = 30.0
 
-
-# --- Physics constants (matches planet.gd) ---
+# --- Physics constants (matches planet.gd and the trajectory predictor) ---
 const G := 1.0
 
 # --- Runtime state ---
+
+# Cached linear velocity. Mutated by gravity, thrust, and the landed-
+# glue logic. Read by the trajectory predictor and the HUD.
 var velocity: Vector2 = Vector2.ZERO
+
+# Visual triangle; we set its polygon and color in _ready.
 @onready var _poly: Polygon2D = $Polygon2D
+
+# Cached reference to the AudioManager autoload (resolved by path —
+# see skill §6.1: autoloads can parse-fail if the project hasn't
+# been reopened in the editor after manual project.godot edits).
 @onready var _audio_manager: Node = get_node("/root/AudioManager")
+
+# True while the rocket is resting on a planet's surface (glued).
 var landed: bool = false
+
+# True once the rocket has crashed (frozen on the crashed_planet).
 var crashed: bool = false
+
+# Planet we're currently landed on. null when in flight.
 var landed_planet: Node2D = null
+
+# Position offset from landed_planet — kept constant each frame so we
+# "ride" the planet through its orbit while landed.
 var landed_offset: Vector2 = Vector2.ZERO
+
+# Planet we crashed into. null when in flight or landed.
 var crashed_planet: Node2D = null
+
+# Position offset from crashed_planet (where on the planet we hit).
 var crashed_offset: Vector2 = Vector2.ZERO
 
 # --- Astronaut state ---
+
+# True while carrying an astronaut back to the home planet. Cleared
+# when we land on the home planet (delivery).
 var carrying_astronaut: bool = false
-var picked_up_count: int = 0  # incremented on pickup; HUD reads this for the circle indicators
+
+# Total astronauts picked up across the level. Read by the HUD
+# (renders ● picked vs ○ unpicked) and by level_controller (win check).
+var picked_up_count: int = 0
 
 # --- Time warp ---
-# Press > to speed up, < to slow down. Clamped at 1x and 8x.
-# Engine.time_scale drives the global sim rate — physics, _process, etc.
-# all run faster. Crucially, delta scales with it, so burning fuel at
-# 8x burns 8x fuel per thrust tick — naturally punishes wasteful burns.
+
+# Discrete time-warp levels. Press > / < to step through them; index
+# 0 = 1× (real-time), max = 8×. Engine.time_scale drives the global
+# sim rate — physics, _process, etc. all run faster, and delta scales
+# with it, so fuel burn at 8× is 8× per thrust tick.
 const TIME_WARP_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0]
+
+# Current index into TIME_WARP_LEVELS.
 var time_warp_index: int = 0
 
 
+## Set the visual polygon, place the rocket (snap to home planet if one
+## exists, else use initial_position), and add to the "player" group.
 func _ready() -> void:
 	_poly.color = color
 	_poly.polygon = _make_triangle(size)
@@ -79,20 +162,20 @@ func _ready() -> void:
 	add_to_group("player")
 	rotation = 0.0
 
-	# If a planet is flagged as is_home, snap the rocket to its surface (riding
-	# the planet in its direction of motion) instead of using the scene's
-	# initial_position. This is the standard "start landed on the home planet"
-	# pattern. If no is_home planet exists, the scene's initial_position and
-	# initial_velocity are used as fallbacks.
+	# If a planet is flagged as is_home, snap the rocket to its surface
+	# (riding the planet in its direction of motion) instead of using
+	# the scene's initial_position. If no is_home planet exists, the
+	# scene's initial_position and initial_velocity are used as fallbacks.
 	_snap_to_home_planet()
 
 
-# If a planet in the "attractors" group has `is_home = true`, place the rocket
-# landed on its surface in the direction of the planet's motion (so the rocket
-# is "riding" the planet). Sets landed/landed_planet/landed_offset so the
-# existing landed-glue logic in _physics_process maintains the position every
-# frame. If no is_home planet is found, does nothing (scene's initial_position
-# and initial_velocity remain in effect).
+## If a planet in the "attractors" group has `is_home = true`, place
+## the rocket landed on its surface in the direction of the planet's
+## motion (so the rocket is "riding" the planet). Sets landed /
+## landed_planet / landed_offset so the landed-glue logic in
+## _physics_process maintains the position every frame. If no is_home
+## planet is found, does nothing (scene's initial_position and
+## initial_velocity remain in effect).
 func _snap_to_home_planet() -> void:
 	for body in get_tree().get_nodes_in_group("attractors"):
 		if not body.get("is_home"):
@@ -103,7 +186,9 @@ func _snap_to_home_planet() -> void:
 		# Place at the surface in the direction of the planet's motion
 		# (tangent to orbit). Default to +X if the planet is stationary.
 		var facing: Vector2 = planet_vel.normalized() if planet_vel.length() > 0.01 else Vector2.RIGHT
-		# 8.0 is the rocket's tail_reach offset (matches landing math).
+		# 8.0 is the rocket's tail-reach offset (matches the tail-reach
+		# math in _physics_process). Keeps the rocket visually "sitting"
+		# on the surface rather than centered on it.
 		var surface_pos: Vector2 = planet_pos + facing * (planet_radius + 8.0)
 		global_position = surface_pos
 		velocity = planet_vel
@@ -114,8 +199,12 @@ func _snap_to_home_planet() -> void:
 		return
 
 
+## Per-tick update: time-warp input, audio gating, landed/launching
+## state glue, landing/crash detection, normal flight integration,
+## and fuel-pickup collection. Order matters — see comments inline.
 func _physics_process(delta: float) -> void:
-	# Time warp input. Handled at the top so it works regardless of crashed/landed.
+	# Time warp input. Handled at the top so it works regardless of
+	# crashed/landed state.
 	if Input.is_action_just_pressed("time_warp_up"):
 		time_warp_index = min(time_warp_index + 1, TIME_WARP_LEVELS.size() - 1)
 		Engine.time_scale = TIME_WARP_LEVELS[time_warp_index]
@@ -130,27 +219,33 @@ func _physics_process(delta: float) -> void:
 		return
 
 	# Thruster audio: plays while the user is holding thrust AND has fuel.
-	# Stops on release, when fuel hits 0, or when crashed. Checked here (before
-	# the crashed/landed early-returns) so the sound stops even if the rocket
-	# is dead, and starts correctly when un-sticking from a planet.
+	# Stops on release, when fuel hits 0, or when crashed. Checked here
+	# (before the crashed/landed early-returns) so the sound stops even
+	# if the rocket is dead, and starts correctly when un-sticking from
+	# a planet.
 	if not crashed and Input.is_action_pressed("thrust") and fuel > 0.0:
 		_audio_manager.start_thruster()
 	else:
 		_audio_manager.stop_thruster()
 
-	# Landed: glue to the planet; thrust unsticks us.
+	# Landed: glue to the planet; thrust unsticks us. (skill §4.1 —
+	# "return only on the stay branch; fall through on the exit branch"
+	# gate pattern. Without the fall-through, thrust wouldn't actually
+	# unstick + move on the same frame.)
 	if landed and landed_planet != null:
 		if Input.is_action_pressed("thrust"):
 			landed = false
 			landed_planet = null
 			# velocity stays matched to the planet (set on land); the
-			# physics below now runs and pushes us outward
+			# physics below now runs and pushes us outward.
 		else:
 			global_position = landed_planet.global_position + landed_offset
 			velocity = Vector2(landed_planet.get("velocity"))
 			return
 
-	# Landing/crash detection: nearest attractor by distance.
+	# Landing/crash detection: nearest attractor by distance. (skill §3.1
+	# — per-frame distance check, not Area2D signals. Avoids the trigger-
+	# radius mismatch of Area2D + CollisionShape2D vs. visual edges.)
 	if not landed and not crashed:
 		var nearest := _find_nearest_attractor()
 		if nearest != null:
@@ -158,7 +253,10 @@ func _physics_process(delta: float) -> void:
 			# the rocket's tail reach so the trigger fires when the tail is
 			# at the surface. `landing_buffer` is a small overshoot past that.
 			var planet_radius: float = float(nearest.get("radius")) * abs(nearest.global_scale.x)
-			var tail_reach: float = size * 0.8   # matches the back vertex in _make_triangle
+			# size * 0.8 matches the back-vertex offset in _make_triangle —
+			# the triangle is (s, 0), (-s*0.8, ±s*0.6), so the back vertex
+			# is 0.8·s behind the center. Keep these in sync.
+			var tail_reach: float = size * 0.8
 			var effective_radius: float = planet_radius + tail_reach + landing_buffer
 			var dist: float = global_position.distance_to(nearest.global_position)
 			if dist <= effective_radius:
@@ -170,9 +268,12 @@ func _physics_process(delta: float) -> void:
 					landed_offset = global_position - nearest.global_position
 					velocity = planet_velocity
 					# Auto-orient nose-outward so first thrust = launch.
+					# Without this, the rocket would still be pointing its
+					# arrival direction and would thrust tangentially.
 					rotation = (global_position - nearest.global_position).angle()
 
-					# Astronaut delivery (carrying on home planet) takes precedence over pickup.
+					# Astronaut delivery (carrying on home planet) takes
+					# precedence over pickup. No delivery sound effect.
 					if carrying_astronaut and landed_planet.get("is_home"):
 						carrying_astronaut = false
 					else:
@@ -180,13 +281,18 @@ func _physics_process(delta: float) -> void:
 						var astronaut := landed_planet.get_node_or_null("Astronaut")
 						if astronaut != null and not astronaut.get("picked_up"):
 							# Reuse the outer `planet_radius` (nearest.radius × scale),
-							# which is the astronaut's actual world distance from the planet center.
+							# which is the astronaut's actual world distance
+							# from the planet center.
 							var pickup_radius: float = planet_radius * astronaut_pickup_radius_multiplier
 							var dist_to_astronaut: float = global_position.distance_to(astronaut.global_position)
 							if dist_to_astronaut <= pickup_radius:
 								astronaut.call("pick_up")
 								carrying_astronaut = true
 								picked_up_count += 1
+							# SFX fires whenever we landed near an astronaut
+							# (even if just barely outside the pickup zone).
+							# Matches the previous behavior; tighten if it
+							# feels too generous.
 							_audio_manager.play_astronaut_pickup()
 				else:
 					crashed = true
@@ -208,21 +314,25 @@ func _physics_process(delta: float) -> void:
 			var forward := Vector2.RIGHT.rotated(rotation)
 			velocity += forward * thrust_acceleration * delta
 
+	# Gravity from every attractor (sun + all planets). Skip self.
 	var total_accel := Vector2.ZERO
 	for body in get_tree().get_nodes_in_group("attractors"):
 		if body == self:
 			continue
 		var mass_value: float = float(body.get("mass"))
 		var to_attractor: Vector2 = body.global_position - global_position
+		# Floor at 1.0 to avoid division-by-zero singularities when the
+		# rocket is exactly on top of an attractor (rare but possible
+		# during a teleport or scene reload).
 		var r := maxf(to_attractor.length(), 1.0)
 		var accel_mag := G * mass_value / (r * r)
 		total_accel += to_attractor.normalized() * accel_mag
 	velocity += total_accel * delta
 	position += velocity * delta
 
-	# Fuel pickup collection: scan the "fuel" group, collect anything in range.
-	# queue_free is deferred to end-of-frame, so each pickup is collected at
-	# most once per physics tick.
+	# Fuel pickup collection: scan the "fuel" group, collect anything
+	# in range. queue_free is deferred to end-of-frame, so each pickup
+	# is collected at most once per physics tick.
 	for pickup in get_tree().get_nodes_in_group("fuel"):
 		if pickup == null or not is_instance_valid(pickup):
 			continue
@@ -232,17 +342,19 @@ func _physics_process(delta: float) -> void:
 			_audio_manager.play_fuel_pickup()
 
 
-# Triangle with nose at +X (forward when rotation = 0).
+## Handle the restart key (R) — reloads the current scene. Rocket state,
+## planet positions, and the level_controller all reset to fresh values.
+## The level_controller's `is_instance_valid(self)` guard handles the
+## rare case of pressing R during the win/lose 0.5s transition delay.
 func _unhandled_input(event: InputEvent) -> void:
-	# R key restarts the level by reloading the current scene. Rocket state,
-	# planet positions, and the level_controller all reset to fresh values.
-	# Works during gameplay (the typical case). The level_controller's
-	# `is_instance_valid(self)` guard handles the rare case of pressing R
-	# during the win/lose 0.5s transition delay.
 	if event.is_action_pressed("restart"):
 		get_tree().reload_current_scene()
 
 
+## Build the rocket's triangle polygon. Nose at +X (so the rocket
+## "points forward" when rotation = 0 and thrust pushes +X).
+## The (s, 0), (-s*0.8, ±s*0.6) layout gives a 0.8·s tail-reach —
+## keep this in sync with `tail_reach = size * 0.8` in _physics_process.
 func _make_triangle(s: float) -> PackedVector2Array:
 	return PackedVector2Array([
 		Vector2(s, 0.0),
@@ -251,9 +363,9 @@ func _make_triangle(s: float) -> PackedVector2Array:
 	])
 
 
-# Find the closest body in "attractors" that's a valid landing target.
-# Skips the rocket itself and any attractor without a `radius` (e.g. the sun —
-# it's still a gravity source, but not a landing target).
+## Find the closest body in "attractors" that's a valid landing target.
+## Skips the rocket itself and any attractor without a `radius` (e.g.,
+## the sun — it's still a gravity source, but not a landing target).
 func _find_nearest_attractor() -> Node2D:
 	var nearest: Node2D = null
 	var nearest_d2: float = INF

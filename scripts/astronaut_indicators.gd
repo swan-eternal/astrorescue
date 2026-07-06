@@ -1,30 +1,47 @@
 extends Control
 ##
-## AstronautIndicators: orange markers over each uncollected astronaut in
-## the level. On-screen: a small ring at the astronaut's screen position.
-## Off-screen: a triangle clamped to the screen edge, pointing outward
-## toward the astronaut.
+## AstronautIndicators: blue markers over each uncollected astronaut
+## in the level. On-screen: a small ring at the astronaut's screen
+## position. Off-screen: a triangle clamped to the screen edge, pointing
+## outward toward the astronaut.
 ##
 
+## Radius (in pixels) of the on-screen ring marker.
 @export var on_screen_radius: float = 8.0
+
+## Distance from the screen edge (in pixels) at which off-screen
+## astronauts are clamped before drawing their edge arrow.
 @export var edge_padding: float = 30.0
-@export var marker_color: Color = Color(0.3, 0.6, 1.0)  # same blue as the astronaut sprite
+
+## Color of both the on-screen rings and the off-screen edge arrows.
+## Set to match the astronaut sprite's blue for visual consistency.
+@export var marker_color: Color = Color(0.3, 0.6, 1.0)
+
+## Size (in pixels) of the off-screen edge arrow.
 @export var arrow_size: float = 12.0
 
+# Cached rocket reference (used only as a "rocket not yet found"
+# safety check in _draw; not actually read for position math).
 var rocket: Node2D = null
 
 
+## Cache the rocket reference (used as a null-check in _draw).
+## Degrades gracefully (warnings, not crashes) if not found.
 func _ready() -> void:
 	rocket = get_tree().get_first_node_in_group("player")
 	if rocket == null:
 		push_warning("AstronautIndicators: no rocket found in 'player' group")
 
 
+## Queue a redraw every frame so markers track world positions in real time.
 func _process(_delta: float) -> void:
-	# Redraw each frame so markers track the world in real time.
 	queue_redraw()
 
 
+## For each uncollected astronaut, draw either an on-screen ring (if the
+## astronaut is currently visible) or an edge arrow pointing outward
+## toward it (if off-screen). The canvas transform handles the world-to-
+## screen conversion including camera position and zoom.
 func _draw() -> void:
 	if rocket == null:
 		return
@@ -56,10 +73,15 @@ func _draw() -> void:
 			_draw_edge_arrow(screen_pos, viewport_size)
 
 
+## Draw a ring marker at the astronaut's screen position. Used when
+## the astronaut is currently visible to the player.
 func _draw_on_screen_marker(at_pos: Vector2) -> void:
 	draw_arc(at_pos, on_screen_radius, 0.0, TAU, 24, marker_color, 2.0, false)
 
 
+## Draw a triangle at the screen edge pointing outward toward the
+## off-screen astronaut. `target_pos` is the astronaut's screen-space
+## position (which is off-screen, hence the edge clamping).
 func _draw_edge_arrow(target_pos: Vector2, viewport_size: Vector2) -> void:
 	# Clamp the off-screen target to just inside the screen edge with padding.
 	var clamped_x: float = clamp(target_pos.x, edge_padding, viewport_size.x - edge_padding)

@@ -1,9 +1,12 @@
 extends Node
 ##
 ## AudioManager: global audio controller (autoload singleton).
+##
 ## Manages background music (menu and gameplay) and SFX (looping thruster
 ## plus one-shot astronaut/fuel pickups). Created as an autoload so it's
-## accessible from any scene as `AudioManager.play_*.gd`.
+## accessible from any scene as `AudioManager.play_*()`. Path-based access
+## via `get_node("/root/AudioManager")` is used by consumers — see skill
+## §6.1 for why we don't rely on the bare identifier.
 ##
 
 const MUSIC_MENU := "res://assets/sound/menubackground.mp3"
@@ -16,6 +19,10 @@ var _music_player: AudioStreamPlayer
 var _thruster_player: AudioStreamPlayer
 
 
+## Create the persistent AudioStreamPlayers: one for music (swapped
+## per scene) and one for the looping thruster SFX. The thruster
+## player is created here and lives for the whole game — that's how
+## the loop stays seamless when start_thruster() is called.
 func _ready() -> void:
 	# Music player: one stream at a time, swapped when the scene changes.
 	_music_player = AudioStreamPlayer.new()
@@ -30,15 +37,19 @@ func _ready() -> void:
 	add_child(_thruster_player)
 
 
+## Reserved hook for re-triggering looping streams that finished.
+## Currently a no-op because the looping streams honor their loop flag
+## and never emit "finished". Kept as a place to add recovery logic if
+## we ever swap to a stream format that doesn't loop reliably.
 func _process(_delta: float) -> void:
-	# Re-trigger looping streams that finished (defensive — for streams that
-	# don't honor the loop flag, like some MP3 imports). For looping streams
-	# this is a no-op because they never emit "finished".
 	pass
 
 
 # --- Music ---
 
+## Load `path` and start playing it on the music channel, looping.
+## No-ops if the same track is already playing (avoids restarting on
+## a duplicate call, e.g., two scene-ready handlers racing).
 func play_music(path: String) -> void:
 	# Avoid restarting the same track if it's already playing (e.g., we
 	# accidentally trigger play_music twice on the same menu).
@@ -54,31 +65,41 @@ func play_music(path: String) -> void:
 	_music_player.play()
 
 
+## Convenience: play the menu background track.
 func play_menu_music() -> void:
 	play_music(MUSIC_MENU)
 
 
+## Convenience: play the gameplay background track.
 func play_gameplay_music() -> void:
 	play_music(MUSIC_GAMEPLAY)
 
 
+## Stop the music channel entirely. Used by win/lose screens (no music
+## during the result overlay).
 func stop_music() -> void:
 	_music_player.stop()
 
 
 # --- Thruster (looping SFX) ---
 
+## Start the thruster loop if it isn't already playing. Idempotent —
+## safe to call every frame from rocket.gd without restarting the sound.
 func start_thruster() -> void:
 	if not _thruster_player.playing:
 		_thruster_player.play()
 
 
+## Stop the thruster loop. Idempotent — safe to call when already stopped.
 func stop_thruster() -> void:
 	_thruster_player.stop()
 
 
 # --- One-shot SFX (astronaut/fuel pickup) ---
 
+## Play a one-shot SFX from `path`. Creates a fresh AudioStreamPlayer,
+## connects its `finished` signal to queue_free so we don't leak nodes
+## after each pickup sound.
 func play_oneshot(path: String) -> void:
 	var player: AudioStreamPlayer = AudioStreamPlayer.new()
 	add_child(player)
@@ -89,9 +110,11 @@ func play_oneshot(path: String) -> void:
 	player.finished.connect(player.queue_free)
 
 
+## Convenience: play the astronaut-pickup success sound.
 func play_astronaut_pickup() -> void:
 	play_oneshot(SFX_ASTRONAUT_PICKUP)
 
 
+## Convenience: play the fuel-pickup loop sound.
 func play_fuel_pickup() -> void:
 	play_oneshot(SFX_FUEL_PICKUP)
