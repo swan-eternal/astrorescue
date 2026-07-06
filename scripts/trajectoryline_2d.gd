@@ -2,7 +2,9 @@ extends Line2D
 ##
 ## Predicts the rocket's trajectory. Two modes:
 ##
-## - TRUE (heliocentric): forward-simulates gravity in the sun's frame.
+## - TRUE (heliocentric): draws the full closed orbital ellipse of the
+##   rocket around the sun, computed in closed form from current (r, v).
+##   No integration, no jitter — exact at any time scale.
 ## - ORBITAL (planetocentric): within a planet's SOI, shows the orbit
 ##   around that planet (analytical ellipse).
 ##
@@ -24,13 +26,11 @@ enum Mode { TRUE, ORBITAL }
 
 # TRUE-mode parameters
 
-## Number of simulation steps to run for the TRUE-mode forward sim.
-## Higher = longer predicted path but more compute per frame.
-@export var steps: int = 300
+## Number of segments used when drawing the closed orbital ellipse for
+## the trajectory line. Higher = smoother curve but more compute per
+## frame. Closed ellipse (not a fading prediction), so 64-128 is plenty.
+@export var ellipse_segments: int = 128
 
-## Time step (seconds) per TRUE-mode simulation step. Smaller = more
-## accurate but more compute; 0.05 gives ~15s of lookahead at default.
-@export var step_dt: float = 0.05
 
 # ORBITAL-mode parameters
 
@@ -44,88 +44,72 @@ enum Mode { TRUE, ORBITAL }
 ## Number of polygon vertices used to draw the ORBITAL-mode ellipse.
 @export var orbit_segments: int = 64
 
+
 # Visual
 
 ## Width of the trajectory line (in pixels). Scales inversely with
 ## camera zoom so the line stays readable at any zoom level.
 @export var line_width: float = 2.0
 
-## Color of the line in TRUE mode (heliocentric forward simulation).
+## Color of the line in TRUE mode (heliocentric closed ellipse).
 @export var true_color: Color = Color(1.0, 0.5, 0.5, 0.7)
 
 ## Color of the line in ORBITAL mode (planetocentric ellipse).
 @export var orbital_color: Color = Color(0.5, 1.0, 0.7, 0.7)
 
-# Time markers — small dots at fixed time intervals along the trajectory
-# (TRUE mode only) showing "where will I be at time T" for planning burns.
-# Markers are drawn in screen space, but only when their projected screen
-# position is within the viewport. Markers that would land off-screen are
-# dropped (don't show at the edge, don't show at all) so the trajectory
-# line stays clean when the camera is far from the action.
 
-## Time interval (in seconds) between TRUE-mode time markers. Smaller
-## = more markers, denser visual.
+# Time markers — small dots showing where the rocket will be at
+# t+interval, t+2*interval, t+3*interval (etc.) along the closed
+# orbit. Markers are sampled in world space, projected to screen;
+# off-screen markers are dropped (strict visibility).
+#
+# Implementation: a "conveyor" array tracks each marker's remaining
+# time. Each physics tick the counters decrement; when one hits 0,
+# it recycles to the next interval. The marker's WORLD position is
+# computed via orbit_calculator.compute_state at (GameTime.current +
+# time_remaining), so each marker's screen position is exact.
+
+## Time interval (seconds) between consecutive orbit markers.
+## Smaller = more markers, denser visual.
 @export var time_marker_interval: float = 5.0
 
-## Radius (in pixels) of each TRUE-mode time marker dot.
+## Radius (pixels) of each marker dot.
 @export var time_marker_radius: float = 2.5
 
-## Fill color of TRUE-mode time markers. Bright yellow with high alpha
-## to stand out against the red TRUE-mode line.
+## Fill color of marker dots. Bright yellow with high alpha to stand
+## out against the red TRUE-mode line.
 @export var time_marker_color: Color = Color(1.0, 0.95, 0.2, 0.95)
 
-## Edge buffer (in pixels) for off-screen marker culling. 0 = strict
+## Edge buffer (pixels) for off-screen marker culling. 0 = strict
 ## in/out (markers exactly on the edge are dropped).
 @export var time_marker_margin: float = 0.0
-
-# Marker conveyor: each marker is at "rocket's projected position N seconds
-# in the future" where N is its time_remaining. Every frame, time_remaining
-# ticks down (markers flow toward the rocket). When a marker reaches 0, it
-# despawns and a new one is spawned at the back (max time). This gives the
-# rocket a continuous "moving target" to plan intercepts against.
 
 ## Number of markers in the conveyor (e.g., 3 = markers at 5s, 10s, 15s
 ## in the future with the default time_marker_interval of 5.0).
 @export var time_marker_count: int = 3
 
+
 # Universal gravitational constant for this script (matches planet.gd
 # and the rocket — keep them in sync).
-const G := 1.0
+const G: float = 1.0
 
-# Floor used to avoid division by zero in gravity calculations when r
-# is very small (e.g., rocket exactly on top of a planet, which is a
-# degenerate case anyway).
-const MIN_DIST := 1.0
+# Floor for distance in gravity calculations to avoid division-by-zero
+# in degenerate cases (e.g., the rocket exactly on the sun).
+const MIN_DIST: float = 1.0
 
 const TimeMarkerScene: PackedScene = preload("res://scenes/time_marker.tscn")
 
 
-# Internal "ghost planet" for TRUE-mode forward simulation. Holds the
-# position/velocity/accel used by the integrator (separate from the
-# real planets so the simulation doesn't disturb the actual scene).
-class _PlanetSim:
-	var pos: Vector2
-	var vel: Vector2
-	var acc: Vector2
-	var mass: float
-
-	func _init(p: Vector2, v: Vector2, m: float) -> void:
-		pos = p
-		vel = v
-		mass = m
-		acc = Vector2.ZERO
-
-
 # Cached reference to the rocket. Read each frame for current position
-# and velocity (the simulation's initial conditions).
+# and velocity (the closed-form orbit is computed from this).
 var rocket: Node2D = null
 
-# Cached reference to the sun (heaviest body in "attractors"). The mass
+# Cached reference to the sun (heaviest body in "attractors"). Mass
 # is read each frame from sun.mass so inspector tweaks take effect live.
 var sun: Node2D = null
 
-# Mirror of sun.mass refreshed each frame in _process. Cached here so
-# the integrator in _update doesn't have to call .get("mass") per step.
+# Mirror of sun.mass refreshed each frame. Cached here so the closed-form
+# math doesn't have to call .get("mass") per step.
 var sun_mass: float = 0.0
 
 # Child CanvasLayer so the time markers draw in screen space
@@ -135,9 +119,9 @@ var _time_marker_canvas: CanvasLayer
 # The actual TimeMarker Control, child of the CanvasLayer.
 var _time_marker: Control
 
-# Time-remaining (seconds) for each conveyor marker; decreases each
-# tick. When it hits 0, the marker is "recycled" back to the back of
-# the conveyor (max time). Sized by `time_marker_count` in _ready.
+# Time-remaining (seconds) for each conveyor marker. Decrements each
+# tick; when it hits 0, the marker is recycled to the next interval.
+# Sized by `time_marker_count` in _ready.
 var _marker_times: PackedFloat32Array = PackedFloat32Array()
 
 # The planet whose Hill sphere contains the rocket (in ORBITAL mode).
@@ -146,9 +130,8 @@ var _marker_times: PackedFloat32Array = PackedFloat32Array()
 var central_planet: Node2D = null
 
 
-## Initialize top_level (world-space positioning), cache the rocket +
-## sun, build the time-marker conveyor array, and create the CanvasLayer
-## + TimeMarker for the marker dots.
+## Set up top_level, cache rocket/sun, build the time-marker conveyor,
+## and create the CanvasLayer + TimeMarker for marker rendering.
 func _ready() -> void:
 	top_level = true
 	width = line_width
@@ -194,10 +177,8 @@ func _find_sun() -> Node2D:
 	return heaviest
 
 
-## Each frame: scale line width for current zoom, refresh sun_mass from
-## the cached reference, handle the mode-toggle input, suppress output
-## while the rocket is landed, recompute the trajectory, and advance
-## the time-marker conveyor.
+## Each frame: scale line width, refresh sun mass, handle toggle, suppress
+## while landed, recompute the trajectory, and advance the marker conveyor.
 func _process(_delta: float) -> void:
 	if rocket == null:
 		return
@@ -217,9 +198,8 @@ func _process(_delta: float) -> void:
 		mode = Mode.ORBITAL if mode == Mode.TRUE else Mode.TRUE
 
 	# No trajectory line or markers while landed — the planet's own orbit
-	# (planettrajectoryline_2d) already shows where the planet is going. The
-	# rocket's predicted path is just tangent to the orbit and adds noise
-	# without useful information.
+	# line (planettrajectoryline_2d) already shows where the planet is going.
+	# The rocket's predicted path adds noise without useful information.
 	if rocket.landed:
 		points = PackedVector2Array()
 		_time_marker.update_positions(PackedVector2Array())
@@ -227,11 +207,9 @@ func _process(_delta: float) -> void:
 
 	_update()
 
-	# Marker conveyor: each marker is at "rocket's projected position N
-	# seconds in the future" where N is its time_remaining. Every frame,
-	# decrement time_remaining (markers flow toward the rocket). When a marker
-	# reaches time_remaining <= 0, it despawns and a new one is spawned at
-	# the back (max time = time_marker_interval * time_marker_count).
+	# Marker conveyor: each marker's time_remaining ticks down; when it
+	# hits 0, recycle to the next interval so the conveyor always shows
+	# markers at "interval, 2*interval, 3*interval" into the future.
 	if mode == Mode.ORBITAL and central_planet != null:
 		_time_marker.update_positions(PackedVector2Array())
 	else:
@@ -240,25 +218,27 @@ func _process(_delta: float) -> void:
 			if _marker_times[i] <= 0.0:
 				_marker_times[i] = time_marker_interval * float(time_marker_count)
 
-		# Compute marker positions from the current trajectory. `points` (just
-		# recomputed in _update above) is time-ordered at step_dt intervals.
-		# We pick `points[index]` for each marker where index is the integer
-		# time-remaining offset in step_dt units.
+		# Sample each marker at its future time using the closed-form orbit
+		# math. Each marker represents the rocket's position at
+		# (GameTime.current + time_remaining), so we ask orbit_calculator
+		# for that absolute time. Closed-form = no jitter near planets.
+		var elements := _compute_elements_from_state(rocket.global_position, rocket.velocity, sun_mass)
 		var marker_positions: PackedVector2Array = PackedVector2Array()
-		for time_remaining in _marker_times:
-			var index: int = int(time_remaining / step_dt)
-			if index < 0:
-				index = 0
-			elif index >= points.size():
-				index = points.size() - 1
-			marker_positions.append(points[index])
+		if not elements.is_empty():
+			for time_remaining in _marker_times:
+				var t_marker: float = GameTime.current + time_remaining
+				var state := OrbitCalculator.compute_state(
+					elements["perihelion"], elements["aphelion"],
+					elements["angle_of_aphelion"], elements["phase"],
+					t_marker, sun_mass
+				)
+				marker_positions.append(state["position"])
 		_time_marker.update_positions(_world_to_screen_markers(marker_positions))
 
 
-## Determine the current mode (TRUE vs ORBITAL) and recompute the
-## trajectory points. In ORBITAL mode, sets `central_planet` if the
-## rocket is inside a planet's SOI; otherwise falls back to TRUE mode
-## even if mode == ORBITAL.
+## Determine the current mode (TRUE vs ORBITAL) and recompute the trajectory.
+## In ORBITAL mode, sets `central_planet` if the rocket is inside a planet's
+## SOI; otherwise falls back to TRUE mode even if mode == ORBITAL.
 func _update() -> void:
 	var attractors := get_tree().get_nodes_in_group("attractors")
 
@@ -283,91 +263,75 @@ func _update() -> void:
 		# ORBITAL mode markers not yet implemented — _process will clear them.
 	else:
 		default_color = true_color
-		points = _simulate_heliocentric(attractors)
-		# Markers are updated in _process (with snapshot support).
+		# TRUE mode: full closed-form ellipse from current (r, v) state.
+		# Closed-form = exact, no jitter near gravity wells, no drift.
+		points = _orbit_ellipse(
+			rocket.global_position, rocket.velocity,
+			sun_mass, ellipse_segments, Vector2.ZERO
+		)
 
 
-## Convert a list of world-space marker positions to screen-space,
-## INCLUDING only those that fall within the viewport (with optional
-## edge buffer). Off-screen markers are dropped, not clamped — strict
-## visibility.
-func _world_to_screen_markers(world_positions: PackedVector2Array) -> PackedVector2Array:
-	var canvas_xform: Transform2D = get_viewport().get_canvas_transform()
-	var viewport_size: Vector2 = get_viewport_rect().size
-	var screen_positions: PackedVector2Array = PackedVector2Array()
-	for world_pos in world_positions:
-		var screen_pos: Vector2 = canvas_xform * world_pos
-		# Strict in/out: only include if within the viewport (with optional margin).
-		if screen_pos.x >= time_marker_margin and \
-		   screen_pos.x <= viewport_size.x - time_marker_margin and \
-		   screen_pos.y >= time_marker_margin and \
-		   screen_pos.y <= viewport_size.y - time_marker_margin:
-			screen_positions.append(screen_pos)
-	return screen_positions
-
-
-## ORBITAL mode: analytical orbit ellipse around a planet (in the
-## planet's frame). Returns points relative to world origin (the
-## `offset` param shifts them by the planet's world position).
+## ORBITAL mode: analytical orbit ellipse around a planet (planetocentric
+## frame). Same math as TRUE mode but in the planet's reference frame
+## (rocket pos/vel relative to planet, gravitational parameter = planet's).
 func _compute_planetocentric_ellipse(planet: Node2D) -> PackedVector2Array:
 	var planet_pos: Vector2 = planet.global_position
 	var planet_vel: Vector2 = Vector2(planet.get("velocity"))
 
 	# Rocket state in planet's reference frame.
 	var r: Vector2 = rocket.global_position - planet_pos
-	var v: Vector2 = Vector2(rocket.get("velocity")) - planet_vel
+	var v: Vector2 = rocket.velocity - planet_vel
 
 	var mu: float = G * float(planet.get("mass"))
 	return _orbit_ellipse(r, v, mu, orbit_segments, planet_pos)
 
 
-## TRUE mode: forward simulation in the sun's frame, planets simulated
-## too (as ghost _PlanetSim copies that don't affect the actual scene).
-## Uses Velocity Verlet integration for stability over many steps.
-func _simulate_heliocentric(attractors: Array) -> PackedVector2Array:
-	var planets: Array = []
-	for body in attractors:
-		var m: float = float(body.get("mass"))
-		if m < sun_mass * 0.5:
-			planets.append(_PlanetSim.new(
-	body.global_position,
-	Vector2(body.get("velocity")),
-	m
-		))
+## Convert current (r, v) state to orbital elements (perihelion, aphelion,
+## angle_of_aphelion, phase) so OrbitCalculator.compute_state can sample
+## the orbit at arbitrary future times. Returns empty Dictionary {} if the
+## orbit is unbound (epsilon >= 0, i.e., escape velocity or beyond).
+func _compute_elements_from_state(r: Vector2, v: Vector2, mu: float) -> Dictionary:
+	var dist: float = maxf(r.length(), MIN_DIST)
+	var v_sq: float = v.length_squared()
 
-	var r_pos: Vector2 = rocket.global_position
-	var r_vel: Vector2 = Vector2(rocket.get("velocity"))
-	var r_acc: Vector2 = _rocket_accel(r_pos, planets)
-	for p in planets:
-		p.acc = _planet_accel(p.pos)
+	# Specific orbital energy: negative = bound, positive = unbound.
+	var epsilon: float = v_sq / 2.0 - mu / dist
+	if epsilon >= 0.0:
+		return {}
 
-	var pts := PackedVector2Array()
-	pts.append(r_pos)
+	# Semi-major axis from vis-viva rearranged.
+	var a: float = -mu / (2.0 * epsilon)
 
-	for i in steps:
-		for p in planets:
-			var new_pos: Vector2 = p.pos + p.vel * step_dt + 0.5 * p.acc * step_dt * step_dt
-			var new_acc: Vector2 = _planet_accel(new_pos)
-			var new_vel: Vector2 = p.vel + 0.5 * (p.acc + new_acc) * step_dt
-			p.pos = new_pos
-			p.vel = new_vel
-			p.acc = new_acc
+	# Eccentricity vector (points toward periapsis from focus).
+	var e_vec: Vector2 = ((v_sq - mu / dist) * r - r.dot(v) * v) / mu
+	var e: float = e_vec.length()
+	var omega: float = atan2(e_vec.y, e_vec.x)
 
-		var new_r_pos: Vector2 = r_pos + r_vel * step_dt + 0.5 * r_acc * step_dt * step_dt
-		var new_r_acc: Vector2 = _rocket_accel(new_r_pos, planets)
-		var new_r_vel: Vector2 = r_vel + 0.5 * (r_acc + new_r_acc) * step_dt
-		r_pos = new_r_pos
-		r_vel = new_r_vel
-		r_acc = new_r_acc
+	# True anomaly at current position: angle from +X axis to current
+	# position, minus the angle to periapsis direction.
+	var nu: float = atan2(r.y, r.x) - omega
+	# Wrap to [0, 2π).
+	nu = fmod(nu, TAU)
+	if nu < 0.0:
+		nu += TAU
 
-		pts.append(r_pos)
+	# Convert true anomaly → eccentric anomaly → mean anomaly (the
+	# "phase" that OrbitCalculator expects at t=0).
+	# tan(E/2) = sqrt((1-e)/(1+e)) · tan(ν/2)
+	# E = 2 * atan2(sqrt(1-e)·sin(ν/2), sqrt(1+e)·cos(ν/2))
+	var E: float = 2.0 * atan2(sqrt(1.0 - e) * sin(nu / 2.0), sqrt(1.0 + e) * cos(nu / 2.0))
+	var M: float = E - e * sin(E)  # mean anomaly at epoch
 
-	return pts
+	return {
+		"perihelion": a * (1.0 - e),
+		"aphelion": a * (1.0 + e),
+		"angle_of_aphelion": omega,
+		"phase": M
+	}
 
 
 ## Compute an analytical orbit ellipse from current position, velocity,
-## and `mu` (= G × central_mass). Used by both the planet orbit lines
-## and the rocket's ORBITAL mode. Returns a closed loop (first point
+## and `mu` (= G × central_mass). Returns a closed loop (first point
 ## appended at the end). Falls back to a single point for unbound orbits.
 func _orbit_ellipse(r: Vector2, v: Vector2, mu: float, segs: int, offset: Vector2) -> PackedVector2Array:
 	var dist: float = maxf(r.length(), MIN_DIST)
@@ -375,7 +339,7 @@ func _orbit_ellipse(r: Vector2, v: Vector2, mu: float, segs: int, offset: Vector
 
 	var epsilon: float = v_sq / 2.0 - mu / dist
 	if epsilon >= 0.0:
-		return PackedVector2Array([offset + r])
+		return PackedVector2Array([offset + r])  # unbound (hyperbolic) — just show current point
 
 	var h: float = r.x * v.y - r.y * v.x
 	var a: float = -mu / (2.0 * epsilon)
@@ -390,30 +354,23 @@ func _orbit_ellipse(r: Vector2, v: Vector2, mu: float, segs: int, offset: Vector
 		var theta: float = TAU * float(i) / float(segs)
 		var r_orbit: float = a * one_minus_e_sq / (1.0 + e * cos(theta - omega))
 		pts.append(offset + Vector2(r_orbit * cos(theta), r_orbit * sin(theta)))
-	pts.append(pts[0])  # close the loop — same missing-segment issue as the planet orbit ellipses
+	pts.append(pts[0])  # close the loop — last sample is at theta = (n-1)/n * TAU, missing the segment back to 0
 	return pts
 
 
-## Acceleration on a planet at `pos` due to the sun (only — planets
-## don't feel each other in this simulation). Used inside _simulate_heliocentric.
-func _planet_accel(pos: Vector2) -> Vector2:
-	var to_sun := -pos
-	var r := maxf(to_sun.length(), MIN_DIST)
-	return to_sun.normalized() * (G * sun_mass / (r * r))
-
-
-## Acceleration on the rocket at `pos` due to the sun + every simulated
-## planet (ghost _PlanetSim copies). Used inside _simulate_heliocentric.
-func _rocket_accel(pos: Vector2, planets: Array) -> Vector2:
-	var total := Vector2.ZERO
-
-	var to_sun := -pos
-	var r_sun := maxf(to_sun.length(), MIN_DIST)
-	total += to_sun.normalized() * (G * sun_mass / (r_sun * r_sun))
-
-	for p in planets:
-		var to_p: Vector2 = p.pos - pos
-		var r_p := maxf(to_p.length(), MIN_DIST)
-		total += to_p.normalized() * (G * p.mass / (r_p * r_p))
-
-	return total
+## Convert a list of world-space marker positions to screen-space,
+## including only those that fall within the viewport (with optional
+## edge buffer). Off-screen markers are dropped, not clamped — strict
+## visibility.
+func _world_to_screen_markers(world_positions: PackedVector2Array) -> PackedVector2Array:
+	var canvas_xform: Transform2D = get_viewport().get_canvas_transform()
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var screen_positions: PackedVector2Array = PackedVector2Array()
+	for world_pos in world_positions:
+		var screen_pos: Vector2 = canvas_xform * world_pos
+		if screen_pos.x >= time_marker_margin and \
+		   screen_pos.x <= viewport_size.x - time_marker_margin and \
+		   screen_pos.y >= time_marker_margin and \
+		   screen_pos.y <= viewport_size.y - time_marker_margin:
+			screen_positions.append(screen_pos)
+	return screen_positions

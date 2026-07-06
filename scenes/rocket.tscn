@@ -14,8 +14,7 @@ launch_speed = 50.0
 
 [node name="Line2D" type="Line2D" parent="." unique_id=1418851520]
 script = ExtResource("2_dkv7l")
-steps = 1500
-step_dt = 0.1
+ellipse_segments = 128
 time_marker_interval = 10.0
 time_marker_radius = 3.0
 time_marker_color = Color(1, 1, 0.5568628, 0.6627451)
