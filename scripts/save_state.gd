@@ -12,6 +12,12 @@ const SAVE_PATH := "user://save.json"
 # Mutated by complete_level() and load_state(); read by is_level_unlocked().
 var highest_level_completed: int = 0
 
+# Which level is currently loaded. Set by level_select / main_menu before
+# changing scene to the shared level.tscn. Read by win_screen / lose_screen
+# for the Restart button (so Restart returns to the level the player just
+# completed, not always level 1). Resets to 0 between game sessions.
+var current_level_number: int = 0
+
 
 ## Load the saved state from disk on startup, so the menu's
 ## Start/Continue label and Level Select gates reflect prior progress.
