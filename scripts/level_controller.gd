@@ -51,9 +51,15 @@ func _ready() -> void:
 
 
 ## Cache references to the rocket + autoloads, count this level's
-## astronauts, and start the gameplay music. Runs once, deferred until
-## after every node's _ready() has fired.
+## astronauts, reset the game-time clock, and start the gameplay music.
+## Runs once, deferred until after every node's _ready() has fired.
 func _initialize() -> void:
+	# Reset the global game-time clock so this level's planets start at
+	# t=0 (their orbital positions are computed from this value). Planets
+	# themselves compute their initial position at t=0 in _ready (so they
+	# appear at the right place even before this reset propagates).
+	GameTime.reset()
+
 	rocket = get_tree().get_first_node_in_group("player")
 	if rocket == null:
 		push_warning("LevelController: rocket not found in 'player' group")
@@ -77,10 +83,16 @@ func _initialize() -> void:
 	_audio_manager.play_gameplay_music()
 
 
-## Each physics tick: check win/lose conditions on the rocket and
-## trigger the corresponding scene transition (with a short delay so
-## the landing visuals register before the screen swap).
-func _physics_process(_delta: float) -> void:
+## Each physics tick: advance the game-time clock, then check win/lose
+## conditions on the rocket and trigger the corresponding scene
+## transition (with a short delay so the landing visuals register before
+## the screen swap).
+func _physics_process(delta: float) -> void:
+	# Advance the clock — planets read GameTime.current to compute their
+	# orbital positions each frame. Engine.time_scale is folded in so
+	# time-warp affects the simulation uniformly.
+	GameTime.tick(delta)
+
 	if rocket == null or _win_triggered or _lose_triggered:
 		return
 

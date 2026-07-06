@@ -21,16 +21,20 @@ has_fuel = true
 fuel_orbit_radius = 50.0
 radius = 40.0
 color = Color(0.3823967, 0.77151555, 0.31417027, 1)
-orbit_radius = 2000.0
-initial_speed_multiplier = 0.98
+perihelion = 1847.7
+aphelion = 2000.0
+angle_of_aphelion = 3.141592653589793
+phase = 3.141592653589793
 mass = 10000.0
 
 [node name="planet2" parent="." unique_id=1822892098 instance=ExtResource("3_sugp2")]
 has_astronaut = true
 radius = 20.0
 color = Color(0.8983825, 0.51649755, 0.7749227, 1)
-orbit_radius = 4000.0
-initial_speed_multiplier = 1.05
+perihelion = 4000.0
+aphelion = 4913.5
+angle_of_aphelion = 0.0
+phase = 0.0
 mass = 20000.0
 
 [node name="rocket" parent="." unique_id=2124542469 instance=ExtResource("3_jyhfs")]

@@ -1,15 +1,16 @@
 extends Node2D
 ##
-## A planet under real gravity simulation.
+## A planet under closed-form orbital mechanics.
 ##
-## Planets only feel the sun (not each other) — keeps orbits stable and
-## avoids cross-planet physics cost. The visual is a Polygon2D child drawn
-## by this script's _ready; level designers configure mass, orbit, and
-## gameplay flags via @export vars in the inspector.
+## Each frame, the planet computes its position and velocity from its
+## orbital elements (perihelion, aphelion, angle_of_aphelion, phase) plus
+## `GameTime.current` via `orbit_calculator.gd`. Closed-form replaces the
+## previous Euler integration: no numerical drift, exact at any time
+## scale, stable orbits.
 ##
-## If `has_astronaut` is true, an astronaut is auto-spawned as a child
-## node in _ready. Same for `has_fuel` (auto-spawns a fuel pickup in
-## orbit using the planet's fuel_orbit_radius/speed values).
+## Planets don't feel each other (only the sun, looked up via the
+## "attractors" group each frame). Level designers configure mass,
+## orbit, and gameplay flags via @export vars.
 ##
 
 # --- Level design ---
@@ -47,20 +48,24 @@ extends Node2D
 ## Fill color for the planet's visual.
 @export var color: Color = Color(0.4, 0.7, 0.9)
 
-# --- Initial conditions ---
+# --- Orbital elements ---
 
-## Distance from the sun at which this planet starts. Set per-planet
-## in the level scene to lay out the system.
-@export var orbit_radius: float = 200.0
+## Distance at closest approach to the central body (the sun for
+## planets). Combined with `aphelion`, defines the size and shape of
+## the orbit.
+@export var perihelion: float = 200.0
 
-## Starting angle around the sun (radians). Different phases per planet
-## spread them around the orbit so they don't all start at the same spot.
+## Distance at farthest approach from the central body. Equal to
+## `perihelion` for a circular orbit. Larger values = more elliptical.
+@export var aphelion: float = 200.0
+
+## Orientation of the ellipse's major axis, in radians, measured
+## counterclockwise from world +X. 0 = periapsis along +X axis.
+@export var angle_of_aphelion: float = 0.0
+
+## Body's initial position along the orbit at t=0, in radians of mean
+## anomaly. 0 = body starts at periapsis, π = body starts at apoapsis.
 @export var phase: float = 0.0
-
-## Multiplier on the circular-orbit speed. 1.0 = perfect circular orbit;
-## >1.0 = elliptical (faster, larger apoapsis); <1.0 = slower, larger
-## periapsis. Designers tweak to shape orbits without recomputing math.
-@export var initial_speed_multiplier: float = 1.0
 
 # --- Physics ---
 
@@ -70,9 +75,8 @@ extends Node2D
 ## doesn't tug the rocket much.
 @export var mass: float = 1000.0
 
-# Universal gravitational constant for this project. Same value as in
-# sun.gd, planet.gd, rocket.gd, and the trajectory predictor — keep them
-# in sync if you ever change it.
+# Universal gravitational constant for this script (matches rocket.gd
+# and the trajectory scripts — keep them in sync).
 const G := 1.0
 
 # Fallback sun mass, used only when no attractor is found in the group
@@ -85,31 +89,33 @@ const FuelPickupScene := preload("res://scenes/fuel_pickup.tscn")
 
 # --- Runtime state ---
 
-# Cached linear velocity. Mutated each frame in _physics_process; the
-# rocket reads this when computing its own gravity from this planet.
+# Cached linear velocity. Updated each frame from orbit_calculator.
+# Read by the trajectory predictor and the HUD.
 var velocity: Vector2 = Vector2.ZERO
 
 @onready var _poly: Polygon2D = $Polygon2D
 
 
-## Initialize the planet's position, orbit, visual, and auto-spawned
-## children (astronaut + fuel pickup, depending on the boolean flags).
-## Adds this planet to the "attractors" group so the rocket and
-## trajectory predictor can find us when computing gravity.
+## Set up the visual polygon, register with "attractors", compute the
+## initial position from orbital elements at t=0 (so the planet appears
+## at the right place from frame 1), and auto-spawn any astronaut or
+## fuel pickup children.
 func _ready() -> void:
 	_poly.color = color
 	_poly.polygon = _make_circle(radius, 48)
 
-	position = Vector2(cos(phase), sin(phase)) * orbit_radius
-
-	# Initial velocity tangent to position, magnitude for circular orbit.
-	# Pull sun's mass dynamically so changes to sun.mass propagate.
-	var sun_mass := _find_sun_mass()
-	var tangent := Vector2(-sin(phase), cos(phase))
-	var circular_speed := sqrt(G * sun_mass / orbit_radius)
-	velocity = tangent * circular_speed * initial_speed_multiplier
-
 	add_to_group("attractors")  # so the rocket can be pulled by this planet
+
+	# Compute initial position at t=0 explicitly (not via GameTime.current,
+	# which is reset later in level_controller._initialize and could still
+	# hold a stale value from a previous level at this point in scene
+	# loading). t=0 always means "the start of this orbit."
+	var sun_mass := _find_sun_mass()
+	var state := OrbitCalculator.compute_state(
+		perihelion, aphelion, angle_of_aphelion, phase, 0.0, sun_mass
+	)
+	position = state["position"]
+	velocity = state["velocity"]
 
 	# Auto-spawn the astronaut if flagged. Designer just toggles
 	# `has_astronaut` on the planet instance — the scene manages itself.
@@ -126,23 +132,21 @@ func _ready() -> void:
 		fuel_pickup.orbit_speed = fuel_orbit_speed
 
 
-## Apply the sun's gravity and integrate position via a simple Euler
-## step. Reads sun.mass dynamically each frame so inspector tweaks
-## take effect without restart.
-func _physics_process(delta: float) -> void:
-	# Planets feel only the sun (assumed at world origin), not each other.
-	# This keeps orbits stable and avoids cross-planet physics cost.
+## Each physics tick: compute closed-form position from orbital
+## elements + `GameTime.current`. No integration, no drift.
+func _physics_process(_delta: float) -> void:
 	var sun_mass := _find_sun_mass()
-	var to_sun := -position
-	var r := maxf(to_sun.length(), 1.0)
-	var accel_mag := G * sun_mass / (r * r)
-	velocity += to_sun.normalized() * accel_mag * delta
-	position += velocity * delta
+	var state := OrbitCalculator.compute_state(
+		perihelion, aphelion, angle_of_aphelion, phase,
+		GameTime.current, sun_mass
+	)
+	position = state["position"]
+	velocity = state["velocity"]
 
 
-## Find the most massive body in the "attractors" group (the sun, given
-## our mass setup) and return its mass. Falls back to DEFAULT_SUN_MASS
-## if no attractors have joined the group yet.
+# Find the most massive body in the "attractors" group (the sun, given
+# our mass setup). Returns DEFAULT_SUN_MASS if no attractors yet (e.g.,
+# during the first physics tick before the sun has joined the group).
 func _find_sun_mass() -> float:
 	var attractors := get_tree().get_nodes_in_group("attractors")
 	var max_mass := 0.0
@@ -153,9 +157,9 @@ func _find_sun_mass() -> float:
 	return max_mass if max_mass > 0.0 else DEFAULT_SUN_MASS
 
 
-## Build a closed circle polygon for the planet visual. `segs` controls
-## the smoothness — 48 segments is plenty for any planet size visible
-## on screen.
+# Build a closed circle polygon for the planet visual. `segs` controls
+# the smoothness — 48 segments is plenty for any planet size visible
+# on screen.
 func _make_circle(r: float, segs: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in segs:
