@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://ccvxn8vitnrvf"]
+
+[ext_resource type="Script" uid="uid://boiy7iytpm3qs" path="res://scripts/rocket.gd" id="1_3341w"]
+[ext_resource type="Script" uid="uid://busdxltv2j4c0" path="res://scripts/trajectoryline_2d.gd" id="2_dkv7l"]
+
+[node name="rocket" type="Node2D" unique_id=2124542469]
+script = ExtResource("1_3341w")
+thrust_acceleration = 40.0
+landing_speed_threshold = 30.0
+crash_speed_threshold = 50.0
+launch_speed = 50.0
+
+[node name="Polygon2D" type="Polygon2D" parent="." unique_id=996802943]
+
+[node name="Line2D" type="Line2D" parent="." unique_id=1418851520]
+script = ExtResource("2_dkv7l")
+steps = 1500
+step_dt = 0.1
+time_marker_interval = 10.0
+time_marker_radius = 3.0
+time_marker_color = Color(1, 1, 0.5568628, 0.6627451)
+time_marker_count = 5

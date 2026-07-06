@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://dchxpwxm32w2r"]
+
+[ext_resource type="Texture2D" uid="uid://c2rn41ku1gwqm" path="res://assets/images/rocket/rockettemp.png" id="1_r2ips"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_w7em1"]
+atlas = ExtResource("1_r2ips")
+region = Rect2(0, 0, 53, 96)
+
+[sub_resource type="SpriteFrames" id="SpriteFrames_aqg6t"]
+animations = [{
+"frames": [{
+"duration": 1.0,
+"texture": SubResource("AtlasTexture_w7em1")
+}],
+"loop": 1,
+"name": &"default",
+"speed": 5.0
+}]
+
+[sub_resource type="CapsuleShape2D" id="CapsuleShape2D_enfal"]
+radius = 20.0
+height = 92.0
+
+[node name="playerRocket" type="CharacterBody2D" unique_id=179160720]
+metadata/_edit_group_ = true
+
+[node name="AnimatedSprite2D" type="AnimatedSprite2D" parent="." unique_id=1321882531]
+sprite_frames = SubResource("SpriteFrames_aqg6t")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1448243688]
+shape = SubResource("CapsuleShape2D_enfal")

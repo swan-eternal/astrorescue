@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://bastronaut01"]
+
+[ext_resource type="Script" path="res://scripts/astronaut.gd" id="1_astro"]
+
+[node name="Astronaut" type="Node2D"]
+script = ExtResource("1_astro")
+
+[node name="Polygon2D" type="Polygon2D" parent="."]

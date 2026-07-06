@@ -1,0 +1,9 @@
+# Godot 4+ specific ignores
+.godot/
+.import/
+
+# Imported translations (auto-generated)
+*.translation
+
+# Godot-specific output
+.godot/

@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://brcvkgo8v68vd"]
+
+[ext_resource type="Script" uid="uid://bjinfkqgv51h2" path="res://scripts/planet.gd" id="1_cktii"]
+[ext_resource type="Script" uid="uid://ba72lmlnuc8cn" path="res://scripts/planettrajectoryline_2d.gd" id="2_h8ms6"]
+
+[node name="planet" type="Node2D" unique_id=1158532908]
+script = ExtResource("1_cktii")
+
+[node name="Polygon2D" type="Polygon2D" parent="." unique_id=359625468]
+
+[node name="Line2D" type="Line2D" parent="." unique_id=1734974903]
+script = ExtResource("2_h8ms6")
+line_width = 2.0
+time_marker_interval = 10.0
+time_marker_radius = 3.0
+time_marker_color = Color(1, 0.9490196, 0.74509805, 0.9490196)

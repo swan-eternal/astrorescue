@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://bfuelpick01"]
+
+[ext_resource type="Script" path="res://scripts/fuel_pickup.gd" id="1_fuel"]
+
+[node name="FuelPickup" type="Node2D"]
+script = ExtResource("1_fuel")
+
+[node name="Polygon2D" type="Polygon2D" parent="."]
