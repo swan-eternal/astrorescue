@@ -285,8 +285,8 @@ func _clear_inspector() -> void:
 # sees their changes immediately.
 
 func _build_sun_fields(body: Dictionary, _index: int) -> void:
-	_add_spin_box_field("Mass", body, "mass", 0.0, 1e8, 1000.0)
-	_add_spin_box_field("Radius", body, "radius", 1.0, 1000.0, 1.0)
+	_add_slider_with_input_field("Mass", body, "mass", 0.0, 1e8, 1000.0)
+	_add_slider_with_input_field("Radius", body, "radius", 1.0, 1000.0, 1.0)
 	_add_check_box_field("Landable", body, "is_landable")
 	# No position field — the sun is locked to (0, 0). Orbit math
 	# treats origin as the sun, so a non-zero visual position would
@@ -299,30 +299,30 @@ func _build_planet_fields(body: Dictionary, _index: int) -> void:
 	_add_check_box_field("Home", body, "is_home")
 	_add_check_box_field("Has Astronaut", body, "has_astronaut")
 	_add_check_box_field("Has Fuel", body, "has_fuel")
-	_add_spin_box_field("Mass", body, "mass", 0.0, 1e7, 100.0)
-	_add_spin_box_field("Radius", body, "radius", 1.0, 500.0, 1.0)
+	_add_slider_with_input_field("Mass", body, "mass", 0.0, 1e7, 100.0)
+	_add_slider_with_input_field("Radius", body, "radius", 1.0, 500.0, 1.0)
 	_add_color_picker_field(body, "color")
-	_add_spin_box_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
-	_add_spin_box_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
-	_add_spin_box_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
-	_add_spin_box_degrees_field("Phase", body, "phase")
-	_add_spin_box_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
-	_add_spin_box_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
+	_add_slider_with_input_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
+	_add_slider_with_input_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
+	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
+	_add_slider_with_input_degrees_field("Phase", body, "phase")
+	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
+	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
 	_add_moons_section(body)
 
 
 func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
-	_add_spin_box_field("Mass", body, "mass", 0.0, 1e5, 1.0)
-	_add_spin_box_field("Radius", body, "radius", 1.0, 200.0, 1.0)
+	_add_slider_with_input_field("Mass", body, "mass", 0.0, 1e5, 1.0)
+	_add_slider_with_input_field("Radius", body, "radius", 1.0, 200.0, 1.0)
 	_add_color_picker_field(body, "color")
 	_add_check_box_field("Landable", body, "is_landable")
 	_add_check_box_field("Has Fuel", body, "has_fuel")
-	_add_spin_box_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
-	_add_spin_box_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
-	_add_spin_box_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
-	_add_spin_box_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
-	_add_spin_box_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
-	_add_spin_box_degrees_field("Phase", body, "phase")
+	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
+	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
+	_add_slider_with_input_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
+	_add_slider_with_input_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
+	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
+	_add_slider_with_input_degrees_field("Phase", body, "phase")
 
 
 # --- Inspector field helpers (generic) ---
@@ -331,53 +331,94 @@ func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
 # by spec.bodies[index], so the change persists. _refresh_viewport()
 # rebuilds the live preview from the (now-updated) spec.
 
-## Numeric field: HBox [Label "Mass"] [SpinBox]. SpinBox emits
-## value_changed on every arrow click and on every typed-value commit,
-## so a drag fires many rebuilds. Fast enough for small scenes.
-func _add_spin_box_field(label_text: String, body: Dictionary, key: String, min_v: float, max_v: float, step: float) -> void:
+## Numeric field with slider + input combo: HBox [Label "Mass"] [HSlider] [SpinBox].
+## HSlider for exploration ("drag right to make bigger"); SpinBox for precise
+## entry. Both edit the same value bidirectionally — set_block_signals during
+## sync prevents the other control's value_changed from re-firing our handler.
+## Layout matches the original SpinBox helper (label-on-left, same width); SpinBox fixed
+## at 80px so 5-digit values + arrows fit; HSlider takes the rest of the row.
+## Use for any "feel" numeric (radius, mass, orbital distance, fuel_*). For
+## boolean/color/string/vec2, use the other helpers — sliders don't apply.
+func _add_slider_with_input_field(label_text: String, body: Dictionary, key: String, min_v: float, max_v: float, step: float) -> void:
 	var hbox := HBoxContainer.new()
 	var label := Label.new()
 	label.text = label_text
 	label.custom_minimum_size = Vector2(120, 0)
 	hbox.add_child(label)
+	var initial_value: float = float(body.get(key, 0.0))
+	var slider := HSlider.new()
+	slider.min_value = min_v
+	slider.max_value = max_v
+	slider.step = step
+	slider.value = initial_value
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(0, 24)
+	hbox.add_child(slider)
 	var sb := SpinBox.new()
 	sb.min_value = min_v
 	sb.max_value = max_v
 	sb.step = step
-	sb.value = float(body.get(key, 0.0))
-	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sb.value_changed.connect(func(v):
+	sb.value = initial_value
+	sb.custom_minimum_size = Vector2(80, 0)
+	sb.value_changed.connect(func(v: float):
 		body[key] = v
+		slider.set_block_signals(true)
+		slider.value = v
+		slider.set_block_signals(false)
 		_refresh_viewport()
 	)
 	hbox.add_child(sb)
+	slider.value_changed.connect(func(v: float):
+		body[key] = v
+		sb.set_block_signals(true)
+		sb.value = v
+		sb.set_block_signals(false)
+		_refresh_viewport()
+	)
 	_inspector.add_child(hbox)
 
 
-## Angle field: like _add_spin_box_field but displays / accepts DEGREES
-## in the UI while the spec stores RADIANS (matches what
-## OrbitCalculator.compute_state and planet / moon / asteroid scripts
-## consume). Step 1° ≈ the previous 0.01 rad step (~0.57°) — plenty
-## for orbital authoring. Range clamped to [-180, 180] since angles
-## wrap modulo 2π; users wanting "270°" can type -90° instead.
-func _add_spin_box_degrees_field(label_text: String, body: Dictionary, key: String) -> void:
+## Angle field with slider + input combo: same as _add_slider_with_input_field
+## but displays / accepts DEGREES in the UI while the spec stores RADIANS
+## (matches what OrbitCalculator and planet / moon / asteroid scripts consume).
+## Range clamped to [-180, 180] since angles wrap modulo 2π.
+func _add_slider_with_input_degrees_field(label_text: String, body: Dictionary, key: String) -> void:
 	var hbox := HBoxContainer.new()
 	var label := Label.new()
 	label.text = label_text
 	label.custom_minimum_size = Vector2(120, 0)
 	hbox.add_child(label)
+	var initial_deg: float = float(body.get(key, 0.0)) * 180.0 / PI
+	var slider := HSlider.new()
+	slider.min_value = -180.0
+	slider.max_value = 180.0
+	slider.step = 1.0
+	slider.value = initial_deg
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(0, 24)
+	hbox.add_child(slider)
 	var sb := SpinBox.new()
 	sb.min_value = -180.0
 	sb.max_value = 180.0
 	sb.step = 1.0
 	sb.suffix = "°"
-	sb.value = float(body.get(key, 0.0)) * 180.0 / PI
-	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sb.value = initial_deg
+	sb.custom_minimum_size = Vector2(80, 0)
 	sb.value_changed.connect(func(v: float):
 		body[key] = v * PI / 180.0
+		slider.set_block_signals(true)
+		slider.value = v
+		slider.set_block_signals(false)
 		_refresh_viewport()
 	)
 	hbox.add_child(sb)
+	slider.value_changed.connect(func(v: float):
+		body[key] = v * PI / 180.0
+		sb.set_block_signals(true)
+		sb.value = v
+		sb.set_block_signals(false)
+		_refresh_viewport()
+	)
 	_inspector.add_child(hbox)
 
 
@@ -513,18 +554,18 @@ func _add_moon_editor(planet_body: Dictionary, moon_index: int) -> void:
 	header.add_child(remove_btn)
 	_inspector.add_child(header)
 	# Moon fields — match scripts/level_loader.gd `_instantiate_planet_moon`.
-	_add_spin_box_field("Radius", moon, "radius", 1.0, 100.0, 1.0)
+	_add_slider_with_input_field("Radius", moon, "radius", 1.0, 100.0, 1.0)
 	_add_color_picker_field(moon, "color")
 	_add_check_box_field("Landable", moon, "is_landable")
 	_add_check_box_field("Has Astronaut", moon, "has_astronaut")
 	_add_check_box_field("Has Fuel", moon, "has_fuel")
-	_add_spin_box_field("Mass", moon, "mass", 0.0, 1e5, 1.0)
-	_add_spin_box_field("Perihelion", moon, "perihelion", 0.0, 200.0, 1.0)
-	_add_spin_box_field("Aphelion", moon, "aphelion", 0.0, 200.0, 1.0)
-	_add_spin_box_degrees_field("Angle of Aphelion", moon, "angle_of_aphelion")
-	_add_spin_box_degrees_field("Phase", moon, "phase")
-	_add_spin_box_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", 0.0, 200.0, 1.0)
-	_add_spin_box_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", -10.0, 10.0, 0.01)
+	_add_slider_with_input_field("Mass", moon, "mass", 0.0, 1e5, 1.0)
+	_add_slider_with_input_field("Perihelion", moon, "perihelion", 0.0, 200.0, 1.0)
+	_add_slider_with_input_field("Aphelion", moon, "aphelion", 0.0, 200.0, 1.0)
+	_add_slider_with_input_degrees_field("Angle of Aphelion", moon, "angle_of_aphelion")
+	_add_slider_with_input_degrees_field("Phase", moon, "phase")
+	_add_slider_with_input_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", 0.0, 200.0, 1.0)
+	_add_slider_with_input_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", -10.0, 10.0, 0.01)
 
 
 func _add_add_moon_button(planet_body: Dictionary) -> void:
