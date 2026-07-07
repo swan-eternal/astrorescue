@@ -130,7 +130,11 @@ func apply_visual() -> void:
 ## `level_loader._instantiate_moon` AFTER `host_planet_name` is set.
 func resolve_orbit() -> void:
 	for body in get_tree().get_nodes_in_group("attractors"):
-		if body.name == host_planet_name:
+		# Match against body's `body_label` @export (set by
+		# level_loader from JSON's "name" key), NOT `body.name`
+		# which is the Node's scene-tree identifier and is
+		# always "planet" from scenes/planet.tscn.
+		if body.get("body_label") == host_planet_name:
 			host_planet = body
 			break
 

@@ -54,6 +54,13 @@ extends Node2D
 ## Fill color for the planet's visual.
 @export var color: Color = Color(0.4, 0.7, 0.9)
 
+## Display name for this body. Used by other bodies (e.g. moons
+## looking up their host planet) to reference this one by name.
+## Set by level_loader from the JSON's `"name"` key. Renamed
+## `body_label` to avoid shadowing the built-in `Node.name`
+## (the scene-tree identifier from scenes/planet.tscn).
+@export var body_label: String = "planet"
+
 # --- Orbital elements ---
 
 ## Distance at closest approach to the central body (the sun for

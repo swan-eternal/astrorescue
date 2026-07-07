@@ -1,14 +1,16 @@
 {
   "name": "Level 01",
   "version": 2,
-
   "bodies": [
     {
       "type": "sun",
       "mass": 4000000,
       "radius": 200.0,
       "is_landable": false,
-      "position": [-1, -3]
+      "position": [
+        -1,
+        -3
+      ]
     },
     {
       "type": "planet",
@@ -18,13 +20,34 @@
       "has_fuel": true,
       "mass": 10000,
       "radius": 40.0,
-      "color": [0.3823967, 0.77151555, 0.31417027, 1.0],
+      "color": [
+        0.3823967,
+        0.77151555,
+        0.31417027,
+        1.0
+      ],
       "perihelion": 1847.7,
       "aphelion": 2000.0,
       "angle_of_aphelion": 3.141592653589793,
       "phase": 3.141592653589793,
       "fuel_orbit_radius": 50.0,
       "fuel_orbit_speed": 0.5
+    },
+    {
+      "type": "moon",
+      "host_planet": "earth",
+      "mass": 10.0,
+      "radius": 6.0,
+      "color": [
+        0.7,
+        0.7,
+        0.8
+      ],
+      "perihelion": 25.0,
+      "aphelion": 35.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 0.0,
+      "is_landable": true
     },
     {
       "type": "planet",
@@ -34,16 +57,41 @@
       "has_fuel": false,
       "mass": 20000,
       "radius": 20.0,
-      "color": [0.8983825, 0.51649755, 0.7749227, 1.0],
+      "color": [
+        0.8983825,
+        0.51649755,
+        0.7749227,
+        1.0
+      ],
       "perihelion": 4000.0,
       "aphelion": 4913.5,
       "angle_of_aphelion": 0.0,
       "phase": 0.0
+    },
+    {
+      "type": "asteroid",
+      "mass": 0.0,
+      "radius": 8.0,
+      "color": [
+        0.5,
+        0.4,
+        0.3
+      ],
+      "perihelion": 2400.0,
+      "aphelion": 2400.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 1.0,
+      "is_landable": false
     }
   ],
-
   "rocket": {
-    "initial_position": [3500.0, 0.0],
-    "initial_velocity": [0.0, 50.0]
+    "initial_position": [
+      3500.0,
+      0.0
+    ],
+    "initial_velocity": [
+      0.0,
+      50.0
+    ]
   }
 }

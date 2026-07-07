@@ -101,6 +101,11 @@ func _instantiate_planet(spec: Dictionary) -> void:
 	var planet := PLANET_SCENE.instantiate()
 	get_node("../PlanetContainer").add_child(planet)
 
+	# Display name (used by other bodies for lookup, e.g. moon's
+	# host_planet_name). Read from JSON's "name" key, defaults to
+	# "planet" if missing.
+	planet.body_label = spec.get("name", "planet")
+
 	# Level-design flags.
 	planet.is_home = spec.get("is_home", false)
 	planet.has_astronaut = spec.get("has_astronaut", false)
