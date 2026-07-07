@@ -23,6 +23,15 @@ extends Node2D
 ## Fill color for the rocket's triangle visual.
 @export var color: Color = Color(0.9, 0.95, 1.0)
 
+## Minimum visual size, as a multiple of `size`. The rocket's Polygon2D
+## is scaled by `min_visual_scale / zoom_factor` each frame so the
+## on-screen display size stays roughly constant at `min_visual_scale ×
+## size` pixels regardless of how far the camera is zoomed out. Bump
+## this up if the rocket is still hard to spot at extreme zoom-out.
+## Visual only — physics size, collision radius, and trajectory math
+## all use the underlying `size` directly (unchanged).
+@export var min_visual_scale: float = 1.5
+
 # --- Initial conditions ---
 
 ## Spawn position used ONLY if no planet is flagged `is_home`.
@@ -49,13 +58,13 @@ extends Node2D
 
 ## Thrust acceleration when W/Up is held, along the rocket's nose.
 ## In units per second².
-@export var thrust_acceleration: float = 100.0
+@export var thrust_acceleration: float = 80.0
 
 # --- Collision (skill §3.1: distance-based, not Area2D signals) ---
 
 ## Maximum relative speed for a contact to count as "soft" (else crash).
 ## At rel_speed ≤ this on contact, the rocket sticks; > this, it crashes.
-@export var landing_speed_threshold: float = 8.0
+@export var landing_speed_threshold: float = 80.0
 
 ## Extra distance past the visual contact point at which the landing
 ## trigger fires. Small overshoot so the rocket doesn't appear to
@@ -65,12 +74,7 @@ extends Node2D
 ## Minimum relative speed for a contact to count as a crash. Anything
 ## in the gap (landing_speed_threshold, crash_speed_threshold) lands
 ## as a crash because it's too fast to be safe.
-@export var crash_speed_threshold: float = 30.0
-
-## Initial launch speed when thrusting off a planet. Currently unused —
-## the launch is implicit (thrust unsticks + gravity does the rest).
-## Kept as a hook for future "boost on takeoff" gameplay.
-@export var launch_speed: float = 30.0
+@export var crash_speed_threshold: float = 150.0
 
 # --- Astronaut pickup ---
 
@@ -166,7 +170,31 @@ func _ready() -> void:
 	# (riding the planet in its direction of motion) instead of using
 	# the scene's initial_position. If no is_home planet exists, the
 	# scene's initial_position and initial_velocity are used as fallbacks.
-	_snap_to_home_planet()
+	#
+	# Deferred because LevelLoader is a sibling of the rocket and adds
+	# planets to the "attractors" group in its own _ready. _ready runs
+	# bottom-up, so LevelLoader hasn't run yet by this point — calling
+	# _snap_to_home_planet() directly would find an empty group and
+	# silently no-op, stranding the rocket at initial_position.
+	# call_deferred runs after all _ready completes, so earth is in
+	# the group by the time this fires.
+	call_deferred("_snap_to_home_planet")
+
+
+## Each frame: scale the visual polygon based on camera zoom so the
+## rocket stays readable at any zoom level. Visual only — physics
+## and collision use the underlying `size` directly.
+func _process(_delta: float) -> void:
+	# Same convention as trajectoryline_2d.gd: zoom_factor in [0.1, 1.0],
+	# where lower = more zoomed-out (objects smaller on screen) and
+	# 1.0 = the upper edge of the clamp (zoomed in past 1.0, the
+	# rocket is already plenty big, so we don't keep scaling up).
+	var cam := get_viewport().get_camera_2d()
+	var zoom_factor: float = clampf(cam.zoom.x, 0.1, 1.0) if cam != null else 1.0
+	# Divide min_visual_scale by zoom_factor so on-screen size stays
+	# constant across zooms. With min_visual_scale = 1.5 and size = 10,
+	# the rocket is roughly 30 px wide at any zoom in [0.1, 1.0].
+	_poly.scale = Vector2.ONE * (min_visual_scale / zoom_factor)
 
 
 ## If a planet in the "attractors" group has `is_home = true`, place

@@ -56,11 +56,6 @@
 
   "rocket": {
     "initial_position": [3500.0, 0.0],
-    "initial_velocity": [0.0, 50.0],
-    "thrust_acceleration": 80.0,
-    "landing_speed_threshold": 80.0,
-    "crash_speed_threshold": 150.0,
-    "launch_speed": 100.0,
-    "starting_fuel": 100.0
+    "initial_velocity": [0.0, 50.0]
   }
 }
