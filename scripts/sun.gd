@@ -29,6 +29,14 @@ extends Node2D
 ## Planets keep the default true (see `planet.gd`).
 @export var is_landable: bool = false
 
+# Cached linear velocity. The sun has no orbit (sits at the
+# heliocentric origin), so this stays at Vector2.ZERO. Exposed anyway
+# because every other attractor body (planet.gd, moon.gd, asteroid.gd)
+# has `var velocity`, and HUD/rocket/trajectory/moon code reads
+# body.get("velocity") unconditionally. Vector2(null) would crash with
+# Nonexistent Vector2 constructor otherwise.
+var velocity: Vector2 = Vector2.ZERO
+
 
 ## Register ourselves in the "attractors" group so other bodies (planets,
 ## rocket, trajectory predictor) can find us when computing gravity.
