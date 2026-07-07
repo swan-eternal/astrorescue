@@ -99,7 +99,18 @@ func _ready() -> void:
 ## Skips silently if either the planet or the sun reference is null
 ## (e.g., during scene teardown).
 func _process(_delta: float) -> void:
-	if planet == null or sun == null:
+	if planet == null:
+		return
+
+	# Lazy-init sun: in current levels the sun is added to the scene
+	# before each planet (because _load_level iterates bodies[] in JSON
+	# order, and JSON puts the sun first), so _ready's _find_sun usually
+	# succeeds. This is a defensive mirror of trajectoryline_2d.gd's
+	# lazy-init — if a future level reverses the order, the planet
+	# orbit still finds the sun on the next frame instead of going dark.
+	if sun == null:
+		sun = _find_sun()
+	if sun == null:
 		return
 
 	# Scale line width inversely with camera zoom — same scheme as the player
@@ -109,11 +120,7 @@ func _process(_delta: float) -> void:
 	width = line_width / zoom_factor
 
 	var sun_mass: float = float(sun.get("mass"))
-	points = _compute_orbit_ellipse(
-		planet.global_position,
-		Vector2(planet.get("velocity")),
-		sun_mass
-	)
+	points = _compute_orbit_ellipse_from_elements(sun_mass)
 	_time_marker.update_positions(_world_to_screen_markers(_compute_orbit_markers()))
 
 
@@ -131,34 +138,45 @@ func _find_sun() -> Node2D:
 	return heaviest
 
 
-## Compute the orbit ellipse as a list of points (world-space relative
-## to origin — caller is responsible for any translation). Uses the
-## classical orbital elements (energy, eccentricity vector, argument
-## of periapsis) derived from current position, velocity, and `mu`.
-## Returns a single-point PackedVector2Array if the orbit is unbound
-## (hyperbolic / parabolic) — no closed ellipse to draw.
-func _compute_orbit_ellipse(r: Vector2, v: Vector2, mu: float) -> PackedVector2Array:
-	var dist: float = maxf(r.length(), MIN_DIST)
-	var v_sq: float = v.length_squared()
-
-	var epsilon: float = v_sq / 2.0 - mu / dist
-	if epsilon >= 0.0:
-		return PackedVector2Array([r])  # unbound (hyperbolic) — just show current point
-
-	var h: float = r.x * v.y - r.y * v.x
-	var a: float = -mu / (2.0 * epsilon)
-
-	var e_vec: Vector2 = ((v_sq - mu / dist) * r - r.dot(v) * v) / mu
-	var e: float = e_vec.length()
-	var omega: float = atan2(e_vec.y, e_vec.x)
-
+## Compute the orbit ellipse by sampling OrbitCalculator.compute_state at
+## evenly-spaced times around one orbital period. Uses the planet's own
+## perihelion/aphelion/angle_of_aphelion/phase @exports as constants
+## rather than deriving orbital elements from the current (r, v) state.
+##
+## Why derive-from-state is wrong here: it computes orbital elements like
+## the argument of periapsis (omega = atan2(eccentricity_vec.y, .x)) on
+## every frame, and the eccentricity vector itself is computed from r and v
+## which come from Newton-Raphson Kepler solver iterations with machine-
+## epsilon precision. Frame-to-frame the derived omega wobbles by ~1e-7
+## radians. At low time-warp (1×, 2×) this is invisible. At high time-warp
+## (8×) the planet moves fast across the orbit while the line "rocks" with
+## each per-frame wobble — the visual is a slow breathing pulse.
+##
+## Sampling OrbitCalculator.compute_state directly with constant elements
+## eliminates the wobble: the line is identical frame-to-frame modulo any
+## inspector edits to the elements themselves.
+func _compute_orbit_ellipse_from_elements(sun_mass: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	var one_minus_e_sq: float = 1.0 - e * e
-	for i in segments:
-		var theta: float = TAU * float(i) / float(segments)
-		var r_orbit: float = a * one_minus_e_sq / (1.0 + e * cos(theta - omega))
-		pts.append(Vector2(r_orbit * cos(theta), r_orbit * sin(theta)))
-	pts.append(pts[0])  # close the loop — last sample is at theta = (n-1)/n * TAU, missing the segment back to 0
+	if sun_mass <= 0.0:
+		return pts
+	var perihelion: float = float(planet.get("perihelion"))
+	var aphelion: float = float(planet.get("aphelion"))
+	var omega: float = float(planet.get("angle_of_aphelion"))
+	var phase: float = float(planet.get("phase"))
+	if perihelion <= 0.0 or aphelion <= 0.0:
+		return pts
+	var period: float = OrbitCalculator.compute_period(perihelion, aphelion, sun_mass)
+	if period <= 0.0:
+		return pts
+	# Sample evenly across one period. Use segments+1 points so the last
+	# sample (at t = period) duplicates the first (at t = 0), closing the
+	# loop cleanly — same shape Line2D sees as before.
+	for i in segments + 1:
+		var t: float = period * float(i) / float(segments)
+		var state: Dictionary = OrbitCalculator.compute_state(
+			perihelion, aphelion, omega, phase, t, sun_mass
+		)
+		pts.append(state["position"])
 	return pts
 
 
