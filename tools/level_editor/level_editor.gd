@@ -767,7 +767,7 @@ func _zoom_at_screen_pos(screen_pos: Vector2, factor: float) -> void:
 	# Move the camera so the world point under `screen_pos` stays put.
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
 	var offset: Vector2 = screen_pos - viewport_size / 2.0
-	_camera.position += offset * (1.0 / old_zoom - 1.0 / new_zoom)
+	_camera.position += offset / old_zoom - offset / new_zoom
 	_camera.zoom = new_zoom
 
 
