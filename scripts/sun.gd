@@ -42,3 +42,16 @@ var velocity: Vector2 = Vector2.ZERO
 ## rocket, trajectory predictor) can find us when computing gravity.
 func _ready() -> void:
 	add_to_group("attractors")
+
+
+## Rebuild the visual polygon to match the current @export radius.
+## Mirrors planet.gd / moon.gd / asteroid.gd — called by
+## LevelLoader._instantiate_sun after setting @exports from the spec,
+## and implicitly via the editor's _refresh_viewport() on every
+## inspector edit. The polygon child built a placeholder from the
+## default radius=200 during add_child, before this method could
+## override it.
+func apply_visual() -> void:
+	var poly := get_node_or_null("Polygon2D")
+	if poly != null and poly.has_method("rebuild_circle"):
+		poly.rebuild_circle()

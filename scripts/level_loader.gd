@@ -160,15 +160,23 @@ static func configure_rocket(spec: Dictionary, rocket: Node2D) -> void:
 ## container. Sun is a gravity source; it has no orbit so we just set
 ## mass, radius, and position. @exports are set AFTER add_child per
 ## skill §1.5.
+##
+## **Position is forced to (0, 0) regardless of spec.** Orbit math
+## treats the heliocentric origin as the sun — a non-zero visual
+## position would just float the disk while planets still orbit (0,0).
+## The spec's "position" field is preserved for JSON schema
+## compatibility but ignored here.
 static func _instantiate_sun(spec: Dictionary, container: Node) -> void:
 	var sun := SUN_SCENE.instantiate()
 	container.add_child(sun)
 	sun.mass = spec.get("mass", 4_000_000.0)
 	sun.radius = spec.get("radius", 200.0)
-	if spec.has("position"):
-		var pos: Array = spec["position"]
-		if pos.size() >= 2:
-			sun.position = Vector2(pos[0], pos[1])
+	# Rebuild the visual polygon with the now-set radius (the polygon
+	# child built its placeholder from radius=200 during add_child,
+	# before this method could override it).
+	sun.apply_visual()
+	# Lock to origin — see the docstring above for why.
+	sun.position = Vector2.ZERO
 
 
 ## Instantiate a planet and configure its @exports from the JSON spec.

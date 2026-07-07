@@ -16,6 +16,16 @@ extends Polygon2D
 ## the parent so the visual disk size matches the parent's collision
 ## radius (kept in sync by construction — same source of truth).
 func _ready() -> void:
+	rebuild_circle()
+
+
+## Rebuild the polygon with the parent's current radius. Called by
+## _ready() for the initial draw and by sun.gd's apply_visual() when
+## the radius @export changes (via the level editor, a script, or a
+## reload). The previous version only drew once in _ready(), so the
+## editor's "live preview on every property change" promise didn't
+## hold for the sun — the disk stayed whatever size it first drew at.
+func rebuild_circle() -> void:
 	var parent := get_parent()
 	var r: float = float(parent.get("radius"))
 	var pts := PackedVector2Array()

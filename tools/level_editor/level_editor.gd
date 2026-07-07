@@ -87,6 +87,9 @@ func _build_ui() -> void:
 ## The inspector (Phase 4) is a VBoxContainer rebuilt every time
 ## selection changes — it's filled with SpinBoxes / CheckBoxes /
 ## ColorPickerButtons appropriate to the selected body type.
+## Wrapped in a ScrollContainer so a tall inspector (planet + moons
+## = ~30 fields) scrolls instead of squeezing the body list to zero
+## height and making it unclickable.
 func _build_sidebar(parent: Container) -> void:
 	var sidebar := VBoxContainer.new()
 	sidebar.custom_minimum_size = Vector2(280, 0)
@@ -115,9 +118,13 @@ func _build_sidebar(parent: Container) -> void:
 	sidebar.add_child(HSeparator.new())
 
 	sidebar.add_child(_make_label("Inspector", true))
+	var inspector_scroll := ScrollContainer.new()
+	inspector_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sidebar.add_child(inspector_scroll)
 	_inspector = VBoxContainer.new()
+	_inspector.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_inspector.add_child(_make_label("(select a body to edit properties)"))
-	sidebar.add_child(_inspector)
+	inspector_scroll.add_child(_inspector)
 
 
 ## Right panel: SubViewportContainer + SubViewport with a scene tree
@@ -281,7 +288,10 @@ func _build_sun_fields(body: Dictionary, _index: int) -> void:
 	_add_spin_box_field("Mass", body, "mass", 0.0, 1e8, 1000.0)
 	_add_spin_box_field("Radius", body, "radius", 1.0, 1000.0, 1.0)
 	_add_check_box_field("Landable", body, "is_landable")
-	_add_vec2_field("Position", body, "position")
+	# No position field — the sun is locked to (0, 0). Orbit math
+	# treats origin as the sun, so a non-zero visual position would
+	# just float the disk while planets still orbit (0, 0). Loader
+	# forces Vector2.ZERO regardless of spec.
 
 
 func _build_planet_fields(body: Dictionary, _index: int) -> void:
@@ -294,8 +304,8 @@ func _build_planet_fields(body: Dictionary, _index: int) -> void:
 	_add_color_picker_field(body, "color")
 	_add_spin_box_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
 	_add_spin_box_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
-	_add_spin_box_field("Angle of Aphelion", body, "angle_of_aphelion", -PI, PI, 0.01)
-	_add_spin_box_field("Phase", body, "phase", -PI, PI, 0.01)
+	_add_spin_box_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
+	_add_spin_box_degrees_field("Phase", body, "phase")
 	_add_spin_box_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
 	_add_spin_box_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
 	_add_moons_section(body)
@@ -311,8 +321,8 @@ func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
 	_add_spin_box_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
 	_add_spin_box_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
 	_add_spin_box_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
-	_add_spin_box_field("Angle of Aphelion", body, "angle_of_aphelion", -PI, PI, 0.01)
-	_add_spin_box_field("Phase", body, "phase", -PI, PI, 0.01)
+	_add_spin_box_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
+	_add_spin_box_degrees_field("Phase", body, "phase")
 
 
 # --- Inspector field helpers (generic) ---
@@ -338,6 +348,33 @@ func _add_spin_box_field(label_text: String, body: Dictionary, key: String, min_
 	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sb.value_changed.connect(func(v):
 		body[key] = v
+		_refresh_viewport()
+	)
+	hbox.add_child(sb)
+	_inspector.add_child(hbox)
+
+
+## Angle field: like _add_spin_box_field but displays / accepts DEGREES
+## in the UI while the spec stores RADIANS (matches what
+## OrbitCalculator.compute_state and planet / moon / asteroid scripts
+## consume). Step 1° ≈ the previous 0.01 rad step (~0.57°) — plenty
+## for orbital authoring. Range clamped to [-180, 180] since angles
+## wrap modulo 2π; users wanting "270°" can type -90° instead.
+func _add_spin_box_degrees_field(label_text: String, body: Dictionary, key: String) -> void:
+	var hbox := HBoxContainer.new()
+	var label := Label.new()
+	label.text = label_text
+	label.custom_minimum_size = Vector2(120, 0)
+	hbox.add_child(label)
+	var sb := SpinBox.new()
+	sb.min_value = -180.0
+	sb.max_value = 180.0
+	sb.step = 1.0
+	sb.suffix = "°"
+	sb.value = float(body.get(key, 0.0)) * 180.0 / PI
+	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sb.value_changed.connect(func(v: float):
+		body[key] = v * PI / 180.0
 		_refresh_viewport()
 	)
 	hbox.add_child(sb)
@@ -484,8 +521,8 @@ func _add_moon_editor(planet_body: Dictionary, moon_index: int) -> void:
 	_add_spin_box_field("Mass", moon, "mass", 0.0, 1e5, 1.0)
 	_add_spin_box_field("Perihelion", moon, "perihelion", 0.0, 200.0, 1.0)
 	_add_spin_box_field("Aphelion", moon, "aphelion", 0.0, 200.0, 1.0)
-	_add_spin_box_field("Angle of Aphelion", moon, "angle_of_aphelion", -PI, PI, 0.01)
-	_add_spin_box_field("Phase", moon, "phase", -PI, PI, 0.01)
+	_add_spin_box_degrees_field("Angle of Aphelion", moon, "angle_of_aphelion")
+	_add_spin_box_degrees_field("Phase", moon, "phase")
 	_add_spin_box_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", 0.0, 200.0, 1.0)
 	_add_spin_box_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", -10.0, 10.0, 0.01)
 
