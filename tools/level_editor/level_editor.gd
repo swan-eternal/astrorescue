@@ -331,20 +331,23 @@ func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
 # by spec.bodies[index], so the change persists. _refresh_viewport()
 # rebuilds the live preview from the (now-updated) spec.
 
-## Numeric field with slider + input combo: HBox [Label "Mass"] [HSlider] [SpinBox].
+## Numeric field with slider + input combo: VBox [Label] [HBox [HSlider] [SpinBox]].
 ## HSlider for exploration ("drag right to make bigger"); SpinBox for precise
 ## entry. Both edit the same value bidirectionally — set_block_signals during
 ## sync prevents the other control's value_changed from re-firing our handler.
-## Layout matches the original SpinBox helper (label-on-left, same width); SpinBox fixed
-## at 80px so 5-digit values + arrows fit; HSlider takes the rest of the row.
-## Use for any "feel" numeric (radius, mass, orbital distance, fuel_*). For
-## boolean/color/string/vec2, use the other helpers — sliders don't apply.
+## Layout: label on top, slider + SpinBox in their own HBox below — slider
+## takes the full sidebar width (~260px), SpinBox fixed at 80px on the right.
+## Stacked layout costs ~2× vertical space per field but ScrollContainer
+## (set up in _build_sidebar) handles the overflow. Use for any "feel"
+## numeric (radius, mass, orbital distance, fuel_*). For boolean/color/string/
+## vec2, use the other helpers — sliders don't apply.
 func _add_slider_with_input_field(label_text: String, body: Dictionary, key: String, min_v: float, max_v: float, step: float) -> void:
-	var hbox := HBoxContainer.new()
+	var vbox := VBoxContainer.new()
 	var label := Label.new()
 	label.text = label_text
-	label.custom_minimum_size = Vector2(120, 0)
-	hbox.add_child(label)
+	vbox.add_child(label)
+	var hbox := HBoxContainer.new()
+	vbox.add_child(hbox)
 	var initial_value: float = float(body.get(key, 0.0))
 	var slider := HSlider.new()
 	slider.min_value = min_v
@@ -375,7 +378,7 @@ func _add_slider_with_input_field(label_text: String, body: Dictionary, key: Str
 		sb.set_block_signals(false)
 		_refresh_viewport()
 	)
-	_inspector.add_child(hbox)
+	_inspector.add_child(vbox)
 
 
 ## Angle field with slider + input combo: same as _add_slider_with_input_field
@@ -383,11 +386,12 @@ func _add_slider_with_input_field(label_text: String, body: Dictionary, key: Str
 ## (matches what OrbitCalculator and planet / moon / asteroid scripts consume).
 ## Range clamped to [-180, 180] since angles wrap modulo 2π.
 func _add_slider_with_input_degrees_field(label_text: String, body: Dictionary, key: String) -> void:
-	var hbox := HBoxContainer.new()
+	var vbox := VBoxContainer.new()
 	var label := Label.new()
 	label.text = label_text
-	label.custom_minimum_size = Vector2(120, 0)
-	hbox.add_child(label)
+	vbox.add_child(label)
+	var hbox := HBoxContainer.new()
+	vbox.add_child(hbox)
 	var initial_deg: float = float(body.get(key, 0.0)) * 180.0 / PI
 	var slider := HSlider.new()
 	slider.min_value = -180.0
@@ -419,7 +423,7 @@ func _add_slider_with_input_degrees_field(label_text: String, body: Dictionary, 
 		sb.set_block_signals(false)
 		_refresh_viewport()
 	)
-	_inspector.add_child(hbox)
+	_inspector.add_child(vbox)
 
 
 ## Boolean field: standalone CheckBox with a label.
