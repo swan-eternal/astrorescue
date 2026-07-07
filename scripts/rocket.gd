@@ -325,11 +325,11 @@ func _physics_process(delta: float) -> void:
 								astronaut.call("pick_up")
 								carrying_astronaut = true
 								picked_up_count += 1
-							# SFX fires whenever we landed near an astronaut
-							# (even if just barely outside the pickup zone).
-							# Matches the previous behavior; tighten if it
-							# feels too generous.
-							_audio_manager.play_astronaut_pickup()
+								# SFX now fires only on actual pickup (not whenever
+								# the rocket merely lands near an astronaut). Tightened
+								# per the existing TODO; the old "fires whenever we
+								# landed near" behavior was too noisy.
+								_audio_manager.play_astronaut_pickup()
 				else:
 					crashed = true
 					crashed_planet = nearest
