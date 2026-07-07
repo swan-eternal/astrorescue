@@ -721,11 +721,26 @@ func _refresh_viewport() -> void:
 # trackpads don't have it, and the discoverability cost outweighs
 # avoiding ambiguity with future "click body to select in viewport"
 # features (which we'd handle with a dedicated click vs. drag threshold
-# when they exist). Uses _unhandled_input so events already consumed
-# by UI controls (e.g., a SpinBox's scroll-wheel increments) don't
-# double-fire on the camera.
+# when they exist).
+#
+# **Uses _input, not _unhandled_input.** _unhandled_input fires AFTER
+# GUI processing, which meant left-click events on the SubViewport were
+# getting forwarded to the SubViewport's world (and marked handled)
+# before reaching our handler. Wheel events weren't forwarded, which
+# is why zoom worked but pan didn't — looked identical in code but
+# had different event delivery. _input fires earlier and bypasses
+# that. The viewport-rect check below keeps us from hijacking clicks
+# meant for sidebar buttons / body list / inspector.
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton or event is InputEventMouseMotion):
+		return
+	# Only handle events over the viewport area — clicks/drags in the
+	# sidebar (body list, buttons, inspector) shouldn't pan/zoom.
+	var screen_pos: Vector2 = (event as InputEventMouse).position
+	var viewport_rect := Rect2(_viewport_container.global_position, _viewport_container.size)
+	if not viewport_rect.has_point(screen_pos):
+		return
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		match mb.button_index:
