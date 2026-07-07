@@ -92,11 +92,6 @@ extends Node2D
 # and the trajectory scripts — keep them in sync).
 const G := 1.0
 
-# Fallback sun mass, used only when no attractor is found in the group
-# yet (e.g., during the first physics tick before any body has joined).
-# The real sun's mass is read dynamically from sun.gd in _physics_process.
-const DEFAULT_SUN_MASS := 4_000_000.0
-
 const AstronautScene := preload("res://scenes/astronaut.tscn")
 const FuelPickupScene := preload("res://scenes/fuel_pickup.tscn")
 
@@ -186,8 +181,11 @@ func _physics_process(_delta: float) -> void:
 
 
 # Find the most massive body in the "attractors" group (the sun, given
-# our mass setup). Returns DEFAULT_SUN_MASS if no attractors yet (e.g.,
-# during the first physics tick before the sun has joined the group).
+# our mass setup). Returns 0 if no attractors yet. Caller's
+# orbit_calculator call will yield a zero-state in that case, which is
+# the correct behavior. The window where this returns 0 is at most
+# one physics tick (sun is always instantiated before any planet),
+# so the visual catch-up via _physics_process handles it cleanly.
 func _find_sun_mass() -> float:
 	var attractors := get_tree().get_nodes_in_group("attractors")
 	var max_mass := 0.0
@@ -195,7 +193,7 @@ func _find_sun_mass() -> float:
 		var mass_value: float = float(body.get("mass"))
 		if mass_value > max_mass:
 			max_mass = mass_value
-	return max_mass if max_mass > 0.0 else DEFAULT_SUN_MASS
+	return max_mass
 
 
 # Build a closed circle polygon for the planet visual. `segs` controls
