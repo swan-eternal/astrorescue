@@ -1,4 +1,4 @@
-[gd_scene format=3 load_steps=6 uid="uid://blevelshared0001"]
+[gd_scene format=3 uid="uid://pauu8wnx5fwi"]
 
 [ext_resource type="Script" uid="uid://fp5hh41fxlfi" path="res://scripts/level_controller.gd" id="1_lctrl"]
 [ext_resource type="PackedScene" uid="uid://ccvxn8vitnrvf" path="res://scenes/rocket.tscn" id="2_rocket"]
