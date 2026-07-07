@@ -78,7 +78,7 @@ func _load_level() -> void:
 ## position. @exports are set AFTER add_child per skill §1.5.
 func _instantiate_sun(spec: Dictionary) -> void:
 	var sun := SUN_SCENE.instantiate()
-	get_node("SunContainer").add_child(sun)
+	get_node("../SunContainer").add_child(sun)
 	sun.mass = spec.get("mass", 4_000_000.0)
 	if spec.has("position"):
 		var pos: Array = spec["position"]
@@ -92,7 +92,7 @@ func _instantiate_sun(spec: Dictionary) -> void:
 ## will run on the next frame, by which time all @exports are set.
 func _instantiate_planet(spec: Dictionary) -> void:
 	var planet := PLANET_SCENE.instantiate()
-	get_node("PlanetContainer").add_child(planet)
+	get_node("../PlanetContainer").add_child(planet)
 
 	# Level-design flags.
 	planet.is_home = spec.get("is_home", false)
@@ -108,6 +108,18 @@ func _instantiate_planet(spec: Dictionary) -> void:
 		if col.size() >= 3:
 			var alpha: float = col[3] if col.size() >= 4 else 1.0
 			planet.color = Color(col[0], col[1], col[2], alpha)
+
+	# Rebuild the visual polygon with the now-set radius + color.
+	# planet._ready built a placeholder from default @export values
+	# (radius=8, default color) during add_child, before this method
+	# could override them.
+	planet.apply_visual()
+
+	# Spawn astronaut + fuel pickup children based on the now-set flags.
+	# Must be called AFTER the @exports above are set — planet._ready
+	# defaults has_astronaut and has_fuel to false, so spawning there
+	# would silently skip every planet even when JSON says otherwise.
+	planet.spawn_dynamic_children()
 
 	# Orbital elements (closed-form orbit, see orbit_calculator.gd).
 	planet.perihelion = spec.get("perihelion", 200.0)
@@ -134,10 +146,16 @@ func _configure_rocket(spec: Dictionary) -> void:
 		push_warning("LevelLoader: rocket not found in 'player' group (still loading?)")
 		return
 
-	# Initial position and velocity. For level_01 these are overridden by
-	# _snap_to_home_planet during rocket._ready (which runs before this),
-	# so they're effectively unused there. Kept in JSON for documentation
-	# and to support future levels without a home planet.
+	# Initial position and velocity — only per-level values the JSON
+	# carries. Game-wide rocket characteristics (thrust, landing/crash
+	# thresholds, fuel capacity, etc.) are configured in rocket.gd's
+	# @export defaults so they're all in one place.
+	#
+	# For level_01 the home planet override runs in rocket._ready
+	# (call_deferred("_snap_to_home_planet")) and glues the rocket to
+	# the planet regardless of initial_position. These values are
+	# honored for any future level without an `is_home` planet, where
+	# the rocket truly spawns at a fixed point in space.
 	if spec.has("initial_position"):
 		var pos: Array = spec["initial_position"]
 		if pos.size() >= 2:
@@ -146,15 +164,3 @@ func _configure_rocket(spec: Dictionary) -> void:
 		var vel: Array = spec["initial_velocity"]
 		if vel.size() >= 2:
 			rocket.initial_velocity = Vector2(vel[0], vel[1])
-
-	# Tuning values — these take effect on the first _physics_process.
-	rocket.thrust_acceleration = spec.get("thrust_acceleration", 100.0)
-	rocket.landing_speed_threshold = spec.get("landing_speed_threshold", 8.0)
-	rocket.crash_speed_threshold = spec.get("crash_speed_threshold", 30.0)
-	rocket.launch_speed = spec.get("launch_speed", 30.0)
-
-	# Fuel. JSON uses "starting_fuel" to distinguish from current fuel.
-	if spec.has("starting_fuel"):
-		rocket.fuel = spec["starting_fuel"]
-	elif spec.has("fuel"):
-		rocket.fuel = spec["fuel"]

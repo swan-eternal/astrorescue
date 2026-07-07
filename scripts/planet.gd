@@ -96,13 +96,17 @@ var velocity: Vector2 = Vector2.ZERO
 @onready var _poly: Polygon2D = $Polygon2D
 
 
-## Set up the visual polygon, register with "attractors", compute the
+## Build a placeholder visual, register with "attractors", compute the
 ## initial position from orbital elements at t=0 (so the planet appears
-## at the right place from frame 1), and auto-spawn any astronaut or
-## fuel pickup children.
+## at the right place from frame 1). Astronaut and fuel pickup spawning
+## is deferred to `spawn_dynamic_children()`; visual refresh (radius +
+## color from JSON) is deferred to `apply_visual()` — see those methods
+## for why neither can run fully in _ready.
 func _ready() -> void:
-	_poly.color = color
-	_poly.polygon = _make_circle(radius, 48)
+	# Build a placeholder visual from whatever radius + color are set
+	# right now. level_loader-driven instances override this via
+	# apply_visual() once it sets those @exports from JSON.
+	apply_visual()
 
 	add_to_group("attractors")  # so the rocket can be pulled by this planet
 
@@ -110,6 +114,12 @@ func _ready() -> void:
 	# which is reset later in level_controller._initialize and could still
 	# hold a stale value from a previous level at this point in scene
 	# loading). t=0 always means "the start of this orbit."
+	#
+	# Note: uses the @export orbital elements, which level_loader sets
+	# AFTER _ready. So this initial position is wrong for level_loader-
+	# driven planets — but _physics_process recomputes the position from
+	# the now-correct @exports on the next tick, so the visual catch-up
+	# happens within ~1 frame.
 	var sun_mass := _find_sun_mass()
 	var state := OrbitCalculator.compute_state(
 		perihelion, aphelion, angle_of_aphelion, phase, 0.0, sun_mass
@@ -117,8 +127,26 @@ func _ready() -> void:
 	position = state["position"]
 	velocity = state["velocity"]
 
-	# Auto-spawn the astronaut if flagged. Designer just toggles
-	# `has_astronaut` on the planet instance — the scene manages itself.
+
+## Apply the current `radius` and `color` @exports to the visual polygon.
+## Idempotent — safe to call from both _ready (placeholder for editor-
+## placed planets) and from level_loader (after it sets radius/color
+## from JSON, to override the _ready placeholder).
+func apply_visual() -> void:
+	_poly.color = color
+	_poly.polygon = _make_circle(radius, 48)
+
+
+## Spawn astronaut and fuel pickup children based on the `has_astronaut`
+## and `has_fuel` flags. Called by level_loader AFTER it sets those @export
+## values from JSON — they default to `false` at _ready time, so the
+## spawn must happen in a separate pass.
+##
+## Level designers without level_loader (e.g., placing planets directly
+## in a scene file via the editor) can also call this manually after
+## setting the flags, or just toggle the @exports in the inspector and
+## use `call_deferred("spawn_dynamic_children")` themselves.
+func spawn_dynamic_children() -> void:
 	if has_astronaut:
 		var astronaut := AstronautScene.instantiate()
 		add_child(astronaut)
