@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://basteroid0000001"]
+
+[ext_resource type="Script" path="res://scripts/asteroid.gd" id="1_asteroid"]
+[ext_resource type="Script" path="res://scripts/planettrajectoryline_2d.gd" id="2_trajectory"]
+
+[node name="asteroid" type="Node2D"]
+script = ExtResource("1_asteroid")
+
+[node name="Polygon2D" type="Polygon2D" parent="."]
+
+[node name="Line2D" type="Line2D" parent="."]
+script = ExtResource("2_trajectory")
+line_width = 2.0
+time_marker_interval = 10.0
+time_marker_radius = 3.0
+time_marker_color = Color(1, 0.9490196, 0.74509805, 0.9490196)

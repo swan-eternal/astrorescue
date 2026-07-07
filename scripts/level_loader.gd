@@ -14,6 +14,8 @@ extends Node
 
 const SUN_SCENE := preload("res://scenes/sun.tscn")
 const PLANET_SCENE := preload("res://scenes/planet.tscn")
+const MOON_SCENE := preload("res://scenes/moon.tscn")
+const ASTEROID_SCENE := preload("res://scenes/asteroid.tscn")
 const LEVELS_DIR := "res://data/levels/"
 
 
@@ -66,6 +68,10 @@ func _load_level() -> void:
 				_instantiate_sun(body_spec)
 			"planet":
 				_instantiate_planet(body_spec)
+			"moon":
+				_instantiate_moon(body_spec)
+			"asteroid":
+				_instantiate_asteroid(body_spec)
 			_:
 				push_warning("LevelLoader: unknown body type '%s' (skipped)" % body_type)
 
@@ -165,3 +171,77 @@ func _configure_rocket(spec: Dictionary) -> void:
 		var vel: Array = spec["initial_velocity"]
 		if vel.size() >= 2:
 			rocket.initial_velocity = Vector2(vel[0], vel[1])
+
+
+## Instantiate a moon and configure its @exports from the JSON spec.
+## @exports are set AFTER add_child per skill §1.5; the moon script
+## is fully initialized at that point. Same pattern as
+## `_instantiate_planet`: set properties, then call apply_visual,
+## spawn_dynamic_children, and resolve_orbit (the last needs
+## host_planet_name from JSON to be in place first).
+func _instantiate_moon(spec: Dictionary) -> void:
+	var moon := MOON_SCENE.instantiate()
+	get_node("../PlanetContainer").add_child(moon)
+
+	# Gameplay flags.
+	moon.is_landable = spec.get("is_landable", true)
+	moon.has_astronaut = spec.get("has_astronaut", false)
+	moon.has_fuel = spec.get("has_fuel", false)
+	moon.fuel_orbit_radius = spec.get("fuel_orbit_radius", 8.0)
+	moon.fuel_orbit_speed = spec.get("fuel_orbit_speed", 0.5)
+
+	# Orbital elements (relative to host planet).
+	moon.perihelion = spec.get("perihelion", 30.0)
+	moon.aphelion = spec.get("aphelion", 30.0)
+	moon.angle_of_aphelion = spec.get("angle_of_aphelion", 0.0)
+	moon.phase = spec.get("phase", 0.0)
+	moon.mass = spec.get("mass", 10.0)
+	moon.host_planet_name = spec.get("host_planet", "")
+
+	# Visual.
+	moon.radius = spec.get("radius", 6.0)
+	if spec.has("color"):
+		var col: Array = spec["color"]
+		if col.size() >= 3:
+			var alpha: float = col[3] if col.size() >= 4 else 1.0
+			moon.color = Color(col[0], col[1], col[2], alpha)
+
+	# Order matters: apply_visual and spawn_dynamic_children both read
+	# @exports we just set; resolve_orbit needs host_planet_name set.
+	moon.apply_visual()
+	moon.spawn_dynamic_children()
+	moon.resolve_orbit()
+
+
+## Instantiate an asteroid and configure its @exports from the JSON
+## spec. Asteroid-specific behaviors: `is_landable = false` by default
+## (touching crashes regardless of speed), `mass = 0.0` (joins the
+## "attractors" group for collision but exerts no gravity), and
+## optional `has_fuel` for risk/reward fuel pickup near the rock.
+func _instantiate_asteroid(spec: Dictionary) -> void:
+	var asteroid := ASTEROID_SCENE.instantiate()
+	get_node("../PlanetContainer").add_child(asteroid)
+
+	# Gameplay flags.
+	asteroid.is_landable = spec.get("is_landable", false)
+	asteroid.has_fuel = spec.get("has_fuel", false)
+	asteroid.fuel_orbit_radius = spec.get("fuel_orbit_radius", 12.0)
+	asteroid.fuel_orbit_speed = spec.get("fuel_orbit_speed", 0.3)
+
+	# Orbital elements (sun-centered).
+	asteroid.perihelion = spec.get("perihelion", 1500.0)
+	asteroid.aphelion = spec.get("aphelion", 2000.0)
+	asteroid.angle_of_aphelion = spec.get("angle_of_aphelion", 0.0)
+	asteroid.phase = spec.get("phase", 0.0)
+	asteroid.mass = spec.get("mass", 0.0)
+
+	# Visual.
+	asteroid.radius = spec.get("radius", 8.0)
+	if spec.has("color"):
+		var col: Array = spec["color"]
+		if col.size() >= 3:
+			var alpha: float = col[3] if col.size() >= 4 else 1.0
+			asteroid.color = Color(col[0], col[1], col[2], alpha)
+
+	asteroid.apply_visual()
+	asteroid.spawn_dynamic_children()

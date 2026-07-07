@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://bmoon0000000001"]
+
+[ext_resource type="Script" path="res://scripts/moon.gd" id="1_moon"]
+
+[node name="moon" type="Node2D"]
+script = ExtResource("1_moon")
+
+[node name="Polygon2D" type="Polygon2D" parent="."]
