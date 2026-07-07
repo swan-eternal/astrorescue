@@ -56,6 +56,7 @@ var _body_list: ItemList
 var _viewport_root: Node2D  # SubViewport's child Node2D
 var _inspector: VBoxContainer  # Phase 4: holds the per-body-type editor panel
 var _camera: Camera2D  # Phase 5: viewport camera, referenced for pan/zoom input
+var _viewport_container: SubViewportContainer  # Phase 5: needed for container-relative screen math (zoom-at-cursor, etc.)
 
 
 # --- Phase 5 viewport control state + tunables ---
@@ -153,7 +154,12 @@ func _build_viewport(parent: Container) -> void:
 	sv_container.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sv_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sv_container.stretch = true  # render to fit container size
+	# MOUSE_FILTER_IGNORE lets mouse events on the viewport pass through
+	# to _unhandled_input cleanly. Default MOUSE_FILTER_STOP would consume
+	# events at the container and could prevent pan/zoom from firing.
+	sv_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(sv_container)
+	_viewport_container = sv_container  # Phase 5: needed for container-relative screen math
 
 	var sub_viewport := SubViewport.new()
 	sub_viewport.size = Vector2(800, 600)
@@ -710,10 +716,13 @@ func _refresh_viewport() -> void:
 
 # --- Phase 5: viewport camera control ---
 # Scroll wheel zooms (centered on the cursor — world point under the
-# mouse stays under the mouse across zoom levels). Middle-click drag
-# pans; Space + left-click drag is the alternative for mice without a
-# middle button. Uses _unhandled_input so events already consumed by
-# UI controls (e.g., a SpinBox's scroll-wheel increments) don't
+# mouse stays under the mouse across zoom levels). Plain left-click
+# drag pans. We deliberately don't use middle-click as the primary:
+# trackpads don't have it, and the discoverability cost outweighs
+# avoiding ambiguity with future "click body to select in viewport"
+# features (which we'd handle with a dedicated click vs. drag threshold
+# when they exist). Uses _unhandled_input so events already consumed
+# by UI controls (e.g., a SpinBox's scroll-wheel increments) don't
 # double-fire on the camera.
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -728,16 +737,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				if mb.pressed:
 					_zoom_at_screen_pos(mb.position, 1.0 / ZOOM_STEP)
 					get_viewport().set_input_as_handled()
-			MOUSE_BUTTON_MIDDLE:
-				_set_panning(mb.pressed, mb.position)
 			MOUSE_BUTTON_LEFT:
-				# Space+left-drag = pan (alternative to middle-click).
-				if Input.is_key_pressed(KEY_SPACE):
-					_set_panning(mb.pressed, mb.position)
+				# Plain left-click drag = pan. No modifier needed.
+				_set_panning(mb.pressed, mb.position)
 	elif event is InputEventMouseMotion and _is_panning:
 		var mm := event as InputEventMouseMotion
 		# Camera moves OPPOSITE to cursor so the world appears to follow
-		# the drag (the standard Blender/Photoshop/VS Code convention).
+		# the drag (the standard Blender/Photoshop convention).
 		var delta: Vector2 = mm.position - _pan_start_screen_pos
 		_camera.position = _pan_start_camera_pos - delta / _camera.zoom
 
@@ -758,15 +764,23 @@ func _set_panning(pressed: bool, screen_pos: Vector2) -> void:
 ## Without this, zooming moves the view away from where the user is
 ## looking. Clamped to [MIN_ZOOM, MAX_ZOOM] so the camera can't zoom
 ## out to a black void or zoom in past useful detail.
+##
+## **Critical:** the offset is computed relative to the
+## SubViewportContainer's center, NOT the window center. The container
+## is offset within the editor sidebar layout; assuming window-center
+## causes every zoom to drift the view toward the window's true
+## center, not the cursor.
 func _zoom_at_screen_pos(screen_pos: Vector2, factor: float) -> void:
 	var old_zoom: Vector2 = _camera.zoom
 	var new_zoom: Vector2 = (old_zoom * factor).clamp(
 		Vector2(MIN_ZOOM, MIN_ZOOM), Vector2(MAX_ZOOM, MAX_ZOOM))
 	if new_zoom == old_zoom:
 		return  # hit clamp, nothing to do
-	# Move the camera so the world point under `screen_pos` stays put.
-	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
-	var offset: Vector2 = screen_pos - viewport_size / 2.0
+	# Container-relative offset: where the mouse is inside the viewport
+	# area, measured from the container's center (the camera's screen
+	# origin in world coords).
+	var offset: Vector2 = (screen_pos - _viewport_container.global_position
+		- _viewport_container.size / 2.0)
 	_camera.position += offset / old_zoom - offset / new_zoom
 	_camera.zoom = new_zoom
 
