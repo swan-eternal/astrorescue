@@ -10,4 +10,3 @@ metadata/_edit_group_ = true
 [node name="Polygon2D" type="Polygon2D" parent="." unique_id=1320962934]
 color = Color(1, 1, 0.13333334, 1)
 script = ExtResource("1_cojbh")
-radius = 200.0

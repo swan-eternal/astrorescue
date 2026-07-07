@@ -1,28 +1,25 @@
 extends Polygon2D
 ##
 ## A small helper: draws a filled circle as this node's polygon.
-## Tweak `radius` and `segments` in the Inspector — they'll take effect
-## the next time the scene is loaded (press F6 again to refresh).
+## Radius is read from the parent (which is `sun.gd` for the sun),
+## so the visual disk and the collision radius share a single source
+## of truth. Segment count is local — circles only need ~48 vertices
+## to look smooth at any realistic zoom.
 ##
-## We use this for the sun, planets, asteroids — anything that's
-## "just a colored disk for now." Once we have real art, this gets
-## replaced by Sprite2D + a PNG.
-##
-
-## Circle radius in world units. Bigger = larger disk drawn.
-@export var radius: float = 60.0
 
 ## Number of polygon vertices used to approximate the circle.
 ## 48 is smooth at any realistic zoom; lower it for quick visual debug.
 @export var segments: int = 48
 
 
-## Build the polygon and assign it to this node. Only runs once at
-## scene load — changes to radius/segments take effect on the next
-## scene reload (F6 in the editor).
+## Build the polygon and assign it to this node. Reads `radius` from
+## the parent so the visual disk size matches the parent's collision
+## radius (kept in sync by construction — same source of truth).
 func _ready() -> void:
+	var parent := get_parent()
+	var r: float = float(parent.get("radius"))
 	var pts := PackedVector2Array()
 	for i in segments:
 		var angle := TAU * float(i) / float(segments)
-		pts.append(Vector2(cos(angle), sin(angle)) * radius)
+		pts.append(Vector2(cos(angle), sin(angle)) * r)
 	polygon = pts

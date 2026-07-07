@@ -290,7 +290,15 @@ func _physics_process(delta: float) -> void:
 			if dist <= effective_radius:
 				var planet_velocity := Vector2(nearest.get("velocity"))
 				var rel_speed: float = (velocity - planet_velocity).length()
-				if rel_speed < landing_speed_threshold:
+				# Non-landable bodies (sun, future asteroids) crash on
+				# contact regardless of approach speed. `is_landable` is a
+				# per-body @export — planets default to true, sun sets false.
+				if nearest.get("is_landable") == false:
+					crashed = true
+					crashed_planet = nearest
+					crashed_offset = global_position - nearest.global_position
+					velocity = Vector2.ZERO
+				elif rel_speed < landing_speed_threshold:
 					landed = true
 					landed_planet = nearest
 					landed_offset = global_position - nearest.global_position
@@ -391,17 +399,19 @@ func _make_triangle(s: float) -> PackedVector2Array:
 	])
 
 
-## Find the closest body in "attractors" that's a valid landing target.
-## Skips the rocket itself and any attractor without a `radius` (e.g.,
-## the sun — it's still a gravity source, but not a landing target).
+## Find the closest body in "attractors". Skips the rocket itself.
+## Every attractor has a `radius` now (sun got one), so no per-type
+## filtering here — land-vs-crash decision lives in the collision
+## branch based on the body's `is_landable` flag.
 func _find_nearest_attractor() -> Node2D:
 	var nearest: Node2D = null
 	var nearest_d2: float = INF
 	for body in get_tree().get_nodes_in_group("attractors"):
 		if body == self:
 			continue
-		if body.get("radius") == null:
-			continue
+		# Every attractor has a `radius` now (sun got one in the
+		# sun-collision fix). The collision branch in `_physics_process`
+		# decides land vs. crash based on `is_landable`, not here.
 		var d2: float = global_position.distance_squared_to(body.global_position)
 		if d2 < nearest_d2:
 			nearest_d2 = d2

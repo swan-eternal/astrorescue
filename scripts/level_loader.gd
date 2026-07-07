@@ -80,6 +80,7 @@ func _instantiate_sun(spec: Dictionary) -> void:
 	var sun := SUN_SCENE.instantiate()
 	get_node("../SunContainer").add_child(sun)
 	sun.mass = spec.get("mass", 4_000_000.0)
+	sun.radius = spec.get("radius", 200.0)
 	if spec.has("position"):
 		var pos: Array = spec["position"]
 		if pos.size() >= 2:

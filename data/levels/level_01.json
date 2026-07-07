@@ -6,6 +6,8 @@
     {
       "type": "sun",
       "mass": 4000000,
+      "radius": 200.0,
+      "is_landable": false,
       "position": [-1, -3]
     },
     {

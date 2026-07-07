@@ -31,6 +31,12 @@ extends Node2D
 ## it inherits the planet's position automatically.
 @export var has_fuel: bool = false
 
+## Whether the rocket can land here. Default true (planets are
+## landable). Bodies like the sun and (future) asteroids set this to
+## false so any contact always counts as a crash, regardless of
+## approach speed. Read by `rocket.gd::_physics_process`.
+@export var is_landable: bool = true
+
 ## Distance beyond the planet's surface where the fuel pickup orbits.
 ## Added to the planet's base `radius` so the pickup always stays
 ## outside the planet, even if this value is small or zero.

@@ -4,8 +4,11 @@ extends Node2D
 ##
 ## Mostly just data: its `mass` is read every frame by every other body
 ## (planets, rocket, trajectory predictor) when computing gravity. The
-## visual is on the Polygon2D child (sunpolygon_2d.gd); this script only
-## handles the gravity-source role.
+## visual is on the Polygon2D child (sunpolygon_2d.gd); this script
+## also owns the collision radius (single source of truth for both the
+## visible disk and the rocket's contact check) and the
+## `is_landable = false` flag so contact with the sun is an instant
+## crash.
 ##
 
 ## Gravitational mass in arbitrary units.
@@ -13,6 +16,18 @@ extends Node2D
 ## inspector take effect immediately — every consumer reads this via
 ## `sun.get("mass")` each frame, no restart needed.
 @export var mass: float = 4_000_000.0
+
+## Collision radius in world units. Single source of truth for both
+## the rocket's contact check (read by `rocket.gd::_physics_process`)
+## and the visible disk drawn by sunpolygon_2d.gd. Higher = larger
+## disk and a wider region where the rocket will crash. Changing the
+## level JSON's `radius` for the sun overrides this default.
+@export var radius: float = 200.0
+
+## Whether the rocket can land here. Always false for the sun —
+## touching the sun is an instant crash regardless of approach speed.
+## Planets keep the default true (see `planet.gd`).
+@export var is_landable: bool = false
 
 
 ## Register ourselves in the "attractors" group so other bodies (planets,
