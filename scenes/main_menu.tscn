@@ -67,6 +67,12 @@ layout_mode = 2
 text = "Quit"
 custom_minimum_size = Vector2(220, 0)
 
+[node name="LevelEditorButton" type="Button" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+text = "Level Editor"
+custom_minimum_size = Vector2(220, 0)
+theme_override_font_sizes/font_size = 14
+
 [node name="HowToPlayPanel" type="Panel" parent="."]
 layout_mode = 1
 visible = false

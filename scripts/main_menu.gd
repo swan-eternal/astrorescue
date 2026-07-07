@@ -24,6 +24,7 @@ func _ready() -> void:
 	$CenterContainer/VBoxContainer/HowToPlayButton.pressed.connect(_on_how_to_play_pressed)
 	$CenterContainer/VBoxContainer/LevelSelectButton.pressed.connect(_on_level_select_pressed)
 	$CenterContainer/VBoxContainer/QuitButton.pressed.connect(_on_quit_pressed)
+	$CenterContainer/VBoxContainer/LevelEditorButton.pressed.connect(_on_level_editor_pressed)
 	close_button.pressed.connect(_on_how_to_play_close)
 
 	# Background music for the menu (and the level picker, which is also a menu).
@@ -67,6 +68,21 @@ func _on_how_to_play_close() -> void:
 ## Quit-button handler: terminate the game.
 func _on_quit_pressed() -> void:
 	get_tree().quit()
+
+
+## Level-Editor-button handler: swap to the level editor scene so
+## Jason can author / tweak levels without leaving the running game.
+## The editor scene lives under tools/level_editor/. ResourceLoader.exists
+## guards against a future build that excludes that folder (the
+## level_editor.gd header claims this exclusion; export_presets.cfg
+## doesn't currently set it — when it does, the click no-ops cleanly
+## here instead of crashing on a missing scene).
+func _on_level_editor_pressed() -> void:
+	const LEVEL_EDITOR_SCENE := "res://tools/level_editor/level_editor.tscn"
+	if not ResourceLoader.exists(LEVEL_EDITOR_SCENE):
+		push_warning("Level editor scene not available in this build.")
+		return
+	get_tree().change_scene_to_file(LEVEL_EDITOR_SCENE)
 
 
 ## Find the highest level the player has unlocked (i.e., the most
