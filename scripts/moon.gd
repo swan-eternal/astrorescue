@@ -2,40 +2,57 @@ extends Node2D
 ##
 ## A moon — orbits a host planet (not the sun) using the same closed-form
 ## orbital mechanics as `planet.gd`, with the host planet's mass as the
-## central body. Each physics tick:
+## central body.
 ##
-##   world_position = host_planet.global_position + state["position"]
-##   world_velocity = host_planet.velocity + state["velocity"]
+## Architecture: moons are CHILDREN of their host planet in the scene tree,
+## not siblings. `level_loader.gd::_instantiate_planet_moon` adds each moon
+## as a child of its planet after the planet's @exports are set, so the
+## moon's `get_parent()` is always the host planet. This eliminates the
+## host_planet-name lookup that the old architecture needed (and that had
+## a bug fix in commit `68bb4ba`).
 ##
-## — both in the host's reference frame, then offset to world coords.
+## Each physics tick:
+##
+##   state = OrbitCalculator.compute_state(
+##       host_radius + perihelion,    # center-relative distance
+##       host_radius + aphelion,      # center-relative distance
+##       angle_of_aphelion, phase, GameTime.current, host_mass
+##   )
+##   position = state["position"]                      # local (Godot applies parent transform)
+##   velocity = parent.velocity + state["velocity"]    # world-frame (for rocket collision reads)
+##
+## Perihelion and aphelion in the JSON are **distance from the planet's
+## SURFACE** (not center). The script adds `host_radius` internally so the
+## OrbitCalculator math is consistent with planet orbits (which use
+## center-relative distance). This makes it physically impossible for a
+## moon to render inside its planet — earth (radius 40) with a moon
+## perihelion of 5 orbits at 45 from center, well clear of the surface.
 ##
 ## As an attractor: yes (joins "attractors" group; the rocket's gravity
-## loop reads `mass` like any other body). Default mass is small (10)
-## so the gravity pull on the rocket is gentle — moons pull the
-## rocket around, but the dominant pull is still the host planet (and
-## the sun).
+## loop reads `mass` like any other body). Default mass is small (10) so
+## the gravity pull on the rocket is gentle — moons perturb, not dominate.
 ##
-## Landable: default true. Use `is_landable = false` in JSON if you
-## want a moon that's a hazard rather than a target.
+## Landable: default true. Use `is_landable = false` in JSON if you want
+## a moon that's a hazard rather than a target.
 ##
 ## Astronaut + fuel flags: same as planets. Spawn via
 ## `spawn_dynamic_children()` called explicitly by `level_loader.gd`
 ## after @exports are set (see the same pattern in `planet.gd`).
 ##
 
-# --- Orbital elements (relative to the host planet) ---
 
-## Name of the host planet to orbit. The level_loader resolves this
-## string to a Node2D in the "attractors" group during
-## `resolve_orbit()`. Required — moons have no meaningful orbit
-## without a host.
-@export var host_planet_name: String = ""
+# --- Orbital elements (relative to the host planet's SURFACE) ---
 
-## Distance at closest approach to the host planet. Must be > 0.
+## Distance at closest approach to the host planet's SURFACE, in world
+## units. The script adds the host planet's radius internally, so the
+## actual orbital perihelion (distance from planet center) is
+## `host_radius + this value`. Must be >= 0 to keep the moon outside
+## the planet.
 @export var perihelion: float = 30.0
 
-## Distance at farthest approach from the host planet. Equal to
-## `perihelion` for a circular orbit.
+## Distance at farthest approach from the host planet's SURFACE. Same
+## offset semantics as `perihelion`. Equal to `perihelion` for a
+## circular orbit.
 @export var aphelion: float = 30.0
 
 ## Orientation of the orbital ellipse, in radians.
@@ -48,8 +65,8 @@ extends Node2D
 # --- Visual ---
 
 ## Visual radius (world units). Doesn't affect physics — only the
-## rendered Polygon2D shape. Build collision radius uses this same
-## value (single source of truth).
+## rendered Polygon2D shape. Collision radius uses this same value
+## (single source of truth).
 @export var radius: float = 6.0
 
 ## Fill color for the moon's visual.
@@ -58,8 +75,8 @@ extends Node2D
 
 # --- Physics ---
 
-## Gravitational mass. Smaller than typical planets by default; tune
-## per level to control how strongly the moon tugs the rocket.
+## Gravitational mass. Smaller than typical planets by default; tune per
+## level to control how strongly the moon tugs the rocket.
 @export var mass: float = 10.0
 
 
@@ -84,8 +101,8 @@ extends Node2D
 @export var fuel_orbit_speed: float = 0.5
 
 
-# Universal gravitational constant. Matches orbit_calculator.gd and
-# other body scripts — keep in sync.
+# Universal gravitational constant. Matches orbit_calculator.gd and other
+# body scripts — keep in sync.
 const G: float = 1.0
 
 
@@ -95,24 +112,37 @@ const FuelPickupScene := preload("res://scenes/fuel_pickup.tscn")
 
 # --- Runtime state ---
 
-# Cached reference to the host planet. Set in `resolve_orbit()` after
-# the loader has set `host_planet_name` from JSON.
-var host_planet: Node2D = null
+# Cached reference to the host planet. Always `get_parent()` — the loader
+# adds moons as children of their planets (see `_ready`).
+var _host: Node2D = null
 
-# World-frame velocity. Updated each physics tick — used by the
-# rocket's collision branch for the rel_speed landing/crash check.
+# Cached host planet radius (world units). Read from the parent in
+# `_ready`. The loader sets the planet's @export BEFORE adding moons as
+# children, so the cache captures the JSON value, not the @export default.
+var _host_radius: float = 0.0
+
+# World-frame velocity. Updated each physics tick — used by the rocket's
+# collision branch for the rel_speed landing/crash check. = parent's
+# world velocity (planet) + our orbital velocity (relative to planet).
 var velocity: Vector2 = Vector2.ZERO
 
 
 @onready var _poly: Polygon2D = $Polygon2D
 
 
-## Build a placeholder visual, register with "attractors". The rest of
-## the init (host lookup, initial position, dynamic children) is
-## deferred to methods called by `level_loader.gd` after @export
-## values are set. Same pattern as `planet.gd` to avoid init-order
-## bugs from the @export-after-add_child rule (skill §1.5).
+## Cache the host planet and its radius, build a placeholder visual,
+## register with "attractors". The rest of the init (visual from current
+## @exports, dynamic children, initial position) is deferred to methods
+## called by `level_loader.gd` after @export values are set. Same pattern
+## as `planet.gd` to avoid init-order bugs from the @export-after-add_child
+## rule (skill §1.5).
+##
+## At this point the parent (planet) has already had its @exports set by
+## the loader, so `get_parent().get("radius")` is the JSON value, not the
+## default. Cache it for use in `_physics_process`.
 func _ready() -> void:
+	_host = get_parent()
+	_host_radius = float(_host.get("radius"))
 	apply_visual()
 	add_to_group("attractors")
 
@@ -125,27 +155,18 @@ func apply_visual() -> void:
 	_poly.polygon = _make_circle(radius, 32)
 
 
-## Resolve the host planet (by name from "attractors") and place
-## ourselves at the orbit-derived initial position. Called by
-## `level_loader._instantiate_moon` AFTER `host_planet_name` is set.
+## Compute the closed-form orbital position at t=0 (relative to the host
+## planet's center) and place ourselves there. Called by
+## `level_loader._instantiate_planet_moon` AFTER the moon's @export
+## values are set. Host is always `get_parent()` — no name lookup needed
+## (the pre-refactor design had a `body_label` lookup bug here, fixed in
+## commit `68bb4ba`; with the parent-child architecture that whole class
+## of bug is gone).
 func resolve_orbit() -> void:
-	for body in get_tree().get_nodes_in_group("attractors"):
-		# Match against body's `body_label` @export (set by
-		# level_loader from JSON's "name" key), NOT `body.name`
-		# which is the Node's scene-tree identifier and is
-		# always "planet" from scenes/planet.tscn.
-		if body.get("body_label") == host_planet_name:
-			host_planet = body
-			break
-
-	if host_planet == null:
-		push_warning("Moon: host_planet '%s' not found in 'attractors' group" % host_planet_name)
-		return
-
-	# Initial position relative to host planet (closed-form orbit at t=0).
-	var host_mass: float = _get_host_mass()
 	var state: Dictionary = OrbitCalculator.compute_state(
-		perihelion, aphelion, angle_of_aphelion, phase, 0.0, host_mass
+		_host_radius + perihelion,
+		_host_radius + aphelion,
+		angle_of_aphelion, phase, 0.0, _get_host_mass()
 	)
 	position = state["position"]
 	velocity = state["velocity"]
@@ -165,33 +186,32 @@ func spawn_dynamic_children() -> void:
 		fuel_pickup.orbit_speed = fuel_orbit_speed
 
 
-## Each physics tick: compute closed-form position relative to the
-## host planet (Kepler equation via `orbit_calculator.gd`) and place
-## ourselves in world coordinates. Same math as `planet.gd` — just
-## with the host planet's mass as central body.
+## Each physics tick: compute closed-form position relative to the host
+## planet (Kepler equation via `orbit_calculator.gd`) and place ourselves.
+## `perihelion` and `aphelion` are surface-relative in the JSON; the
+## script offsets by `_host_radius` so OrbitCalculator receives
+## center-relative distances.
+##
+## Position is set as a LOCAL position — Godot applies the parent's
+## transform automatically because we're a child node, so the moon's
+## world position is correct without manual offset math. Velocity is
+## set as a WORLD-frame vector so `rocket.gd`'s collision branch can
+## read it directly for the rel_speed landing/crash check.
 func _physics_process(_delta: float) -> void:
-	if host_planet == null:
-		return
-	var host_mass: float = _get_host_mass()
 	var state: Dictionary = OrbitCalculator.compute_state(
-		perihelion, aphelion, angle_of_aphelion, phase, GameTime.current, host_mass
+		_host_radius + perihelion,
+		_host_radius + aphelion,
+		angle_of_aphelion, phase, GameTime.current, _get_host_mass()
 	)
-	var planet_velocity: Vector2 = Vector2(host_planet.get("velocity"))
-	# World position = host's world position + moon's offset in
-	# the host's reference frame.
-	global_position = host_planet.global_position + state["position"]
-	# World velocity = host's world velocity + moon's relative velocity.
-	# Needed by the rocket's rel_speed landing/crash check.
-	velocity = planet_velocity + state["velocity"]
+	position = state["position"]
+	velocity = Vector2(_host.get("velocity")) + state["velocity"]
 
 
-# Read the host planet's mass. Fallback small constant if the host
-# hasn't been resolved yet (shouldn't happen after resolve_orbit()
-# runs, but defensive against misordered loader calls).
+# Read the host planet's mass. Called once per physics tick — direct
+# accessor, no defensive null check (the parent is always set by the
+# loader; if it isn't, we have a much bigger problem than a crash here).
 func _get_host_mass() -> float:
-	if host_planet == null:
-		return 10.0
-	return float(host_planet.get("mass"))
+	return float(_host.get("mass"))
 
 
 # Build a closed circle polygon for the visual.

@@ -4,8 +4,10 @@ extends Node
 ##
 ## Attached to scenes/level.tscn (the shared infrastructure scene). On
 ## _ready, reads `data/levels/level_<SaveState.current_level_number>.json`,
-## instantiates bodies (sun, planets) from the spec, and configures
-## the rocket's @exports.
+## instantiates bodies (sun, planets, asteroids) from the spec, and
+## configures the rocket's @exports. Moons are nested under planets in
+## JSON's `moons[]` arrays and instantiated as children of their host
+## planets — see `_instantiate_planet_moon`.
 ##
 ## All level-specific data lives in JSON — this loader is the only
 ## script that interprets it. The shared level.tscn contains no
@@ -56,8 +58,8 @@ func _load_level() -> void:
 	# polymorphism; earlier schemas (v1) used orbit_radius and a
 	# separate sun/planets[] layout — not supported here.
 	var version: int = data.get("version", 0)
-	if version != 2:
-		push_error("LevelLoader: unsupported schema version %d (expected 2)" % version)
+	if version != 3:
+		push_error("LevelLoader: unsupported schema version %d (expected 3)" % version)
 		return
 
 	# Instantiate each body in the JSON spec.
@@ -68,8 +70,6 @@ func _load_level() -> void:
 				_instantiate_sun(body_spec)
 			"planet":
 				_instantiate_planet(body_spec)
-			"moon":
-				_instantiate_moon(body_spec)
 			"asteroid":
 				_instantiate_asteroid(body_spec)
 			_:
@@ -101,9 +101,9 @@ func _instantiate_planet(spec: Dictionary) -> void:
 	var planet := PLANET_SCENE.instantiate()
 	get_node("../PlanetContainer").add_child(planet)
 
-	# Display name (used by other bodies for lookup, e.g. moon's
-	# host_planet_name). Read from JSON's "name" key, defaults to
-	# "planet" if missing.
+	# Display name (read from JSON's "name" key, defaults to "planet"
+	# if missing). Used in win/lose UI and HUD to identify the planet
+	# to the player; not used for scene-tree relationships.
 	planet.body_label = spec.get("name", "planet")
 
 	# Level-design flags.
@@ -142,6 +142,13 @@ func _instantiate_planet(spec: Dictionary) -> void:
 	# Physics.
 	planet.mass = spec.get("mass", 1000.0)
 
+	# Spawn moons as children of this planet. Each moon's parent in
+	# the scene tree IS its host planet — see scripts/moon.gd and
+	# `_instantiate_planet_moon`. Moons are surface-relative to the
+	# planet, not center-relative.
+	for moon_spec in spec.get("moons", []):
+		_instantiate_planet_moon(planet, moon_spec)
+
 
 ## Configure the rocket's @exports from the JSON's "rocket" section.
 ## The rocket is a placeholder in level.tscn; this method tunes its
@@ -178,15 +185,25 @@ func _configure_rocket(spec: Dictionary) -> void:
 			rocket.initial_velocity = Vector2(vel[0], vel[1])
 
 
-## Instantiate a moon and configure its @exports from the JSON spec.
-## @exports are set AFTER add_child per skill §1.5; the moon script
-## is fully initialized at that point. Same pattern as
-## `_instantiate_planet`: set properties, then call apply_visual,
-## spawn_dynamic_children, and resolve_orbit (the last needs
-## host_planet_name from JSON to be in place first).
-func _instantiate_moon(spec: Dictionary) -> void:
+## Instantiate a moon as a CHILD of the given planet and configure its
+## @exports from the JSON spec. Same init-order pattern as
+## `_instantiate_planet`: add_child, set @exports, then call
+## apply_visual + spawn_dynamic_children + resolve_orbit. The moon's
+## parent in the scene tree IS its host planet — no name lookup needed.
+##
+## The moon's perihelion and aphelion are **surface-relative** to the
+## host planet (see scripts/moon.gd header). The moon script adds the
+## host's radius internally to compute center-relative orbital distance,
+## which makes it physically impossible for a moon to render inside its
+## planet.
+##
+## Pre-refactor design: moons were siblings of planets, added to
+## PlanetContainer alongside them, and used a `host_planet_name` string
+## lookup to find their host. The body_label lookup bug (commit
+## `68bb4ba`) is gone with the new architecture.
+func _instantiate_planet_moon(planet: Node2D, spec: Dictionary) -> void:
 	var moon := MOON_SCENE.instantiate()
-	get_node("../PlanetContainer").add_child(moon)
+	planet.add_child(moon)
 
 	# Gameplay flags.
 	moon.is_landable = spec.get("is_landable", true)
@@ -195,13 +212,13 @@ func _instantiate_moon(spec: Dictionary) -> void:
 	moon.fuel_orbit_radius = spec.get("fuel_orbit_radius", 8.0)
 	moon.fuel_orbit_speed = spec.get("fuel_orbit_speed", 0.5)
 
-	# Orbital elements (relative to host planet).
+	# Orbital elements (relative to host planet's SURFACE). The moon
+	# script offsets by host_radius internally.
 	moon.perihelion = spec.get("perihelion", 30.0)
 	moon.aphelion = spec.get("aphelion", 30.0)
 	moon.angle_of_aphelion = spec.get("angle_of_aphelion", 0.0)
 	moon.phase = spec.get("phase", 0.0)
 	moon.mass = spec.get("mass", 10.0)
-	moon.host_planet_name = spec.get("host_planet", "")
 
 	# Visual.
 	moon.radius = spec.get("radius", 6.0)
@@ -211,8 +228,10 @@ func _instantiate_moon(spec: Dictionary) -> void:
 			var alpha: float = col[3] if col.size() >= 4 else 1.0
 			moon.color = Color(col[0], col[1], col[2], alpha)
 
-	# Order matters: apply_visual and spawn_dynamic_children both read
-	# @exports we just set; resolve_orbit needs host_planet_name set.
+	# Same init-order pattern as planets: visual + children need @exports
+	# set first; resolve_orbit needs _host_radius cached in _ready
+	# (which fires on add_child above — planet's @exports were already
+	# set by _instantiate_planet before this loop runs).
 	moon.apply_visual()
 	moon.spawn_dynamic_children()
 	moon.resolve_orbit()
