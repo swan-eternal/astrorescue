@@ -360,38 +360,52 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 
 ## Known Issues & TODOs
 
-### 🔴 High
-- **More levels** — only 3 currently; need additional hand-crafted levels with rising difficulty.
-- **Asteroid belt** — narrow-window obstacle in later levels. Asteroids are now an implemented body type (level_01 has one), but no level uses them as a deliberate "thread the needle" course yet.
-- **Multi-astronaut rescue** — levels where one trip doesn't suffice.
+> Updated 2026-07-07 after Phase 4 inspector + launch-from-menu + four
+> bug fixes in `3b36cbc` (sun visual, sun position lock, degrees in
+> inspector, inspector scroll). Editor work paused awaiting your
+> verification of that commit. Sections below are sequenced; items
+> within a section aren't strict priority — mix and match.
 
-### 🟡 Medium
-- **Fuel economy** — fuel only on planet-flagged `has_fuel`; no in-transit refueling stations. (Asteroids now support `has_fuel` for risk/reward near rocks, but no level uses it.)
-- **Faster time acceleration** — extend `TIME_WARP_LEVELS` from `[1, 2, 4, 8]` to include 16× (and maybe 32×).
+### 1. Verify last commit (`3b36cbc`) — do this first, unverified
+- Sun radius drags live (visual disk grows/shrinks with edits)
+- Sun has no Position field in inspector
+- Angle of Aphelion + Phase show `°` suffix and accept degrees
+- Body list stays visible after Add Moon (ScrollContainer fix)
+- If anything regresses, note the exact symptom and we'll dig in
 
-### 🟢 Low / Polish
-- How to Play content (placeholder)
-- Win/lose music
+### 2. Level editor — make it actually useful (active work)
+- **Phase 6: Test Level** — "play what I just made" button. Loads current spec into the game scene. Closes the edit → play loop.
+- **Phase 5: Pan + Zoom** — bodies at perihelion 9000 are off-screen at the fixed zoom. WASD pan + scroll zoom on the SubViewport Camera2D.
+- **Phase 6: Save / Save As + Load** — write spec to JSON. You'll want Load within one session of Save.
+- **Editor return path** — currently no way back to the main menu. Esc → confirm dialog.
+
+### 3. Game-side polish (independent of editor)
+- **Multi-astronaut rescue** — 2-3 levels where one trip isn't enough
+- **Asteroid belt** — at least one level using asteroids as a deliberate "thread the needle" course (asteroids are implemented, but no level uses them that way yet)
+- **Faster time warp** — extend `TIME_WARP_LEVELS` from `[1, 2, 4, 8]` to include 16× and 32×
+- **Crash/landing speed tuning** — playtest the 80/150 defaults (untested per the old doc)
+- **Fuel economy** — no in-transit refueling; asteroids support `has_fuel` for risk/reward near rocks, no level uses it yet
+
+### 4. Cleanup (cheap)
+- Delete `scenes/level_01.tscn` — stale, untracked, unreferenced (project uses `scenes/level.tscn`; the only references are in `.godot/editor/` metadata which is gitignored)
+- Decide `.uid` tracking policy — keep tracking vs move to `.gitignore`
+- Rename `PlanetContainer` → `BodyContainer`? Cosmetic; holds planets + asteroids
+
+### 5. Game polish backlog (longer-term, your call)
+- More levels (currently 3; need rising-difficulty progression)
+- How-To-Play content (currently placeholder text)
 - Visual feedback on crash / successful pickup
 - Replace procedural `Polygon2D` circles with sprites
-- Tune fuel consumption / thrust
-- Tune crash / land speed thresholds (the `80.0` / `150.0` defaults came straight from level_01's old JSON — Jason hasn't playtested them yet)
-- **Sun `position` is cosmetic** — JSON's `sun.position` doesn't enter orbital math (which treats origin as sun). Worth either honoring it or removing the field for clarity.
+- Win / lose music
+- Tune fuel consumption / thrust defaults
 
-### 📦 Backlog
-- Graphical level editor
-- Multiple rocket types
-- Multiple difficulty modes
-- Achievements
-- Leaderboards
-- Steam release
-- **`.uid` tracking policy** — currently tracked (added in `6e65b69`); could move to `.gitignore` if Godot keeps regenerating and churn becomes annoying
-- **`PlanetContainer` is misnamed** — holds planets + asteroids (moons are now children of their planets, not siblings). Could rename to `BodyContainer` or split per-type. Cosmetic — no behavior change needed.
+### 6. Out of scope (currently — not shipping Astro-Rescue per your 2026-07-07 steer)
+Multiple rocket types, difficulty modes, achievements, leaderboards, Steam release. Kept here for posterity, not on the roadmap. Revisit if/when "release" enters scope.
 
 ## Working Notes
 
 - **Project root:** `rocketman/astrorescue-main/rocketman/`
-- **Git:** 21 commits ahead of origin/main, working tree dirty: doc refresh in progress + uncommitted moon refactor (`scripts/moon.gd` rewrite, `scripts/level_loader.gd` changes, `data/levels/level_*.json` v3 bump). Not pushed (testing first).
+- **Git:** 24 commits ahead of origin/main, working tree dirty: untracked `scenes/level_01.tscn` (stale, see Cleanup #4). Not pushed (testing first).
 - **Init-order lesson (now repeated across multiple scripts):** Whenever a script attaches to a scene where a sibling or cousin populates a group / sets `@export`s later, defer or lazy-init. Three flavors seen across the refactor and body-type expansion:
   - `add_child` first, then call a method that reads now-set `@export`s — `1302eb9` (`apply_visual` + `spawn_dynamic_children`), reused in `700a40b` for moon + asteroid.
   - Lazy retry in `_process` until the resource appears — `7931e51` (`sun = _find_sun()`) and `c3e4541` (the "same pattern" trajectory-side note).
