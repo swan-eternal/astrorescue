@@ -38,8 +38,21 @@ func _ready() -> void:
 
 ## Resolve the level number from SaveState (set by main_menu /
 ## level_select in Phase 8), load the corresponding JSON, and build
-## the scene's per-level content from it.
+## the scene's per-level content from it. If SaveState.test_spec is
+## non-empty (set by the level editor's Test Level button), use that
+## spec instead — editor's in-memory state is the source of truth
+## during testing.
 func _load_level() -> void:
+	# Test level path: editor pushed a spec via SaveState.test_spec.
+	# Takes priority over JSON loading. Consumed on use so subsequent
+	# level loads (e.g., after winning and choosing Next Level) fall
+	# back to the normal JSON path.
+	if not SaveState.test_spec.is_empty():
+		var spec_to_use: Dictionary = SaveState.test_spec
+		SaveState.test_spec = {}
+		build_scene_from_spec(spec_to_use, get_parent())
+		return
+
 	var level_num: int = SaveState.current_level_number
 	if level_num < 1:
 		push_error("LevelLoader: SaveState.current_level_number is %d (must be >= 1)" % level_num)

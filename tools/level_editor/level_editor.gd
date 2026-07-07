@@ -885,15 +885,47 @@ func _make_default_asteroid_spec() -> Dictionary:
 	}
 
 
-# --- Save / Test Level stubs (Phase 6) ---
+# --- Save / Test Level (Phase 6 MVP) ---
+# Save writes to a fixed user://levels/level_custom.json path. Future
+# Save As / Load will track a per-edit path; for now overwriting the
+# same file is fine for iteration during development. Test Level pushes
+# the in-memory spec into SaveState.test_spec and changes scene to
+# level.tscn — the loader checks that field before JSON and uses the
+# editor's spec as the source of truth during testing.
 
+## Write the current in-memory spec to user://levels/level_custom.json
+## (creates the directory if missing). 2-space indent matches the
+## existing data/levels/level_NN.json files. Future: track a current
+## save path so multiple levels can coexist.
 func _on_save() -> void:
-	push_warning("LevelEditor: Save (Phase 6 — not implemented yet)")
+	const SAVE_DIR := "user://levels"
+	const SAVE_FILE := "level_custom.json"
+	if not DirAccess.dir_exists_absolute(SAVE_DIR):
+		var err := DirAccess.make_dir_recursive_absolute(SAVE_DIR)
+		if err != OK:
+			push_error("LevelEditor: failed to create %s (err %d)" % [SAVE_DIR, err])
+			return
+	var path := SAVE_DIR + "/" + SAVE_FILE
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		push_error("LevelEditor: failed to open %s for writing (err %d)" % [path, FileAccess.get_open_error()])
+		return
+	file.store_string(JSON.stringify(spec, "  "))
+	file.close()
+	print("LevelEditor: saved to %s" % path)
 
 
+## Save As... (deferred to Phase 6 follow-up — needs a path picker).
 func _on_save_as() -> void:
-	push_warning("LevelEditor: Save As... (Phase 6 — not implemented yet)")
+	push_warning("LevelEditor: Save As... (Phase 6 follow-up — not implemented yet)")
 
 
+## "Play what I just made" — push the editor's spec into SaveState
+## and change to the actual game scene. The loader checks
+## SaveState.test_spec before reading JSON, so the editor's in-memory
+## spec is the source of truth. Loader consumes the field (sets back
+## to {}) so subsequent scene loads (e.g., winning the test and then
+## Next Level) fall back to JSON.
 func _on_test_level() -> void:
-	push_warning("LevelEditor: Test Level (Phase 6 — not implemented yet)")
+	SaveState.test_spec = spec
+	get_tree().change_scene_to_file("res://scenes/level.tscn")
