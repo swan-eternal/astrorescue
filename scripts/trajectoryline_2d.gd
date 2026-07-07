@@ -69,10 +69,10 @@ enum Mode { ELLIPSE, PROJECTED }
 
 
 # Time markers — small dots showing where the rocket will be at
-# t+interval, t+2*interval, t+3*interval (etc.) along the trajectory.
-# In ELLIPSE mode, markers use closed-form math (exact on the orbital
-# ellipse). In PROJECTED mode, markers are sampled along the
-# forward-simulated polyline (showing perturbations).
+# t+interval, t+2*interval, t+3*interval (etc.) along the projected
+# trajectory. PROJECTED mode only: ELLIPSE mode relies on the closed-form
+# ellipse itself to convey the orbital path, so extra dot markers would
+# clutter the visualization without adding information.
 #
 # Implementation: a "conveyor" array tracks each marker's remaining
 # time. Each physics tick the counters decrement; when one hits 0,
@@ -198,6 +198,12 @@ func _process(_delta: float) -> void:
 	var zoom_factor: float = clampf(cam.zoom.x, 0.1, 1.0) if cam != null else 1.0
 	width = line_width / zoom_factor
 
+	# Lazy-init sun: trajectoryline._ready runs BEFORE LevelLoader._ready
+	# in scene-tree order, so _find_sun() returns null on the first frame.
+	# Retry each frame until found; cheap (one group lookup, one pass).
+	if sun == null:
+		sun = _find_sun()
+
 	# Refresh sun mass from cached reference — change sun.mass in the
 	# inspector and the trajectory picks it up next frame.
 	if sun != null:
@@ -224,29 +230,13 @@ func _process(_delta: float) -> void:
 		if _marker_times[i] <= 0.0:
 			_marker_times[i] = time_marker_interval * float(time_marker_count)
 
-	# Sample markers differently per mode:
-	# - ELLIPSE: closed-form math (exact on the orbital ellipse).
-	# - PROJECTED: indices into the forward-simulated polyline (shows
-	#   perturbations from planet gravity).
+	# PROJECTED mode only: sample indices into the forward-simulated
+	# polyline (shows perturbations from planet gravity). ELLIPSE mode
+	# leaves marker_positions empty — the ellipse itself is the path.
 	var marker_positions: PackedVector2Array = PackedVector2Array()
-	if mode == Mode.ELLIPSE:
-		var elements := _compute_elements_from_state(rocket.global_position, rocket.velocity, sun_mass)
-		if not elements.is_empty():
-			for time_remaining in _marker_times:
-				var t_marker: float = GameTime.current + time_remaining
-				var state := OrbitCalculator.compute_state(
-					elements["perihelion"], elements["aphelion"],
-					elements["angle_of_aphelion"], elements["phase"],
-					t_marker, sun_mass
-				)
-				marker_positions.append(state["position"])
-	else:  # PROJECTED
+	if mode == Mode.PROJECTED and not points.is_empty():
 		for time_remaining in _marker_times:
-			var index: int = int(time_remaining / projected_step_dt)
-			if index < 0:
-				index = 0
-			elif index >= points.size():
-				index = points.size() - 1
+			var index: int = clampi(int(time_remaining / projected_step_dt), 0, points.size() - 1)
 			marker_positions.append(points[index])
 
 	_time_marker.update_positions(_world_to_screen_markers(marker_positions))
