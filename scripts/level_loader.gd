@@ -1,4 +1,5 @@
 extends Node
+class_name LevelLoader
 ##
 ## LevelLoader: reads level_NN.json and builds the scene from it.
 ##
@@ -12,6 +13,13 @@ extends Node
 ## All level-specific data lives in JSON — this loader is the only
 ## script that interprets it. The shared level.tscn contains no
 ## per-level data.
+##
+## **Editor reuse:** `build_scene_from_spec()` and `configure_rocket()`
+## are public + static so the upcoming graphical level editor can call
+## them with an in-memory spec to drive the live preview, without
+## going through JSON. This guarantees the editor and the game share
+## the same scene-building code paths — no orbit-math drift, no
+## init-order surprises.
 ##
 
 const SUN_SCENE := preload("res://scenes/sun.tscn")
@@ -54,37 +62,107 @@ func _load_level() -> void:
 		push_error("LevelLoader: failed to parse JSON in %s" % path)
 		return
 
-	# Validate schema version. v2 uses orbital elements + body-type
-	# polymorphism; earlier schemas (v1) used orbit_radius and a
-	# separate sun/planets[] layout — not supported here.
+	# Validate schema version. v3 uses orbital elements + body-type
+	# polymorphism with moons nested under planets. v2 was similar but
+	# had moons as top-level bodies. v1 used orbit_radius and a separate
+	# sun/planets[] layout — not supported here.
 	var version: int = data.get("version", 0)
 	if version != 3:
 		push_error("LevelLoader: unsupported schema version %d (expected 3)" % version)
 		return
 
-	# Instantiate each body in the JSON spec.
-	for body_spec in data.get("bodies", []):
+	# Build the scene from the loaded JSON. Pass `get_parent()` (the
+	# level node) as root — it has SunContainer + PlanetContainer as
+	# direct children, matching what build_scene_from_spec expects.
+	build_scene_from_spec(data, get_parent())
+
+
+## Build the per-level scene content from a JSON-style spec dict.
+## **Public + static** so the upcoming level editor can call it with
+## an in-memory spec without instantiating a LevelLoader node.
+##
+## `root` should have `SunContainer` and `PlanetContainer` as direct
+## children (matches `scenes/level.tscn`). Existing bodies in those
+## containers are cleared first — calling this twice replaces the
+## level cleanly (used for live preview in the editor).
+##
+## The rocket (in the `"player"` group) is configured from
+## `spec.get("rocket", {})` if found. The editor can call
+## `configure_rocket()` directly when it has a specific rocket instance.
+static func build_scene_from_spec(spec: Dictionary, root: Node) -> void:
+	var sun_container: Node = root.get_node_or_null("SunContainer")
+	var planet_container: Node = root.get_node_or_null("PlanetContainer")
+
+	if sun_container == null or planet_container == null:
+		push_error("LevelLoader.build_scene_from_spec: root must have SunContainer + PlanetContainer children")
+		return
+
+	# Clear existing bodies (idempotent re-build — editor calls this
+	# on every property change for live preview).
+	for child in sun_container.get_children():
+		child.queue_free()
+	for child in planet_container.get_children():
+		child.queue_free()
+
+	# Instantiate each body in the spec. Order matters: the sun must
+	# exist before planets and asteroids can compute their orbits (their
+	# physics_process reads sun.mass from the "attractors" group).
+	for body_spec in spec.get("bodies", []):
 		var body_type: String = body_spec.get("type", "")
 		match body_type:
 			"sun":
-				_instantiate_sun(body_spec)
+				_instantiate_sun(body_spec, sun_container)
 			"planet":
-				_instantiate_planet(body_spec)
+				_instantiate_planet(body_spec, planet_container)
 			"asteroid":
-				_instantiate_asteroid(body_spec)
+				_instantiate_asteroid(body_spec, planet_container)
 			_:
 				push_warning("LevelLoader: unknown body type '%s' (skipped)" % body_type)
 
-	# Configure the rocket's @exports from the JSON's "rocket" section.
-	_configure_rocket(data.get("rocket", {}))
+	# Configure the existing rocket if one is in the tree (level.tscn
+	# places one in "player" group). The editor can call configure_rocket
+	# directly with an explicit instance.
+	var tree := root.get_tree()
+	if tree:
+		var rocket: Node2D = tree.get_first_node_in_group("player")
+		if rocket:
+			configure_rocket(spec.get("rocket", {}), rocket)
 
 
-## Instantiate the sun (at most one per level) and add to SunContainer.
-## Sun is a gravity source; it has no orbit so we just set mass and
-## position. @exports are set AFTER add_child per skill §1.5.
-func _instantiate_sun(spec: Dictionary) -> void:
+## Configure the rocket's @exports from a JSON-style rocket dict.
+## **Public + static** so the editor can call it on any rocket instance.
+##
+## Only sets initial_position and initial_velocity — the per-level values
+## the JSON carries. Game-wide rocket characteristics (thrust, landing/
+## crash thresholds, fuel capacity, etc.) are configured in rocket.gd's
+## @export defaults so they're all in one place.
+static func configure_rocket(spec: Dictionary, rocket: Node2D) -> void:
+	if rocket == null:
+		push_warning("LevelLoader.configure_rocket: rocket is null")
+		return
+
+	# For level_01 the home planet override runs in rocket._ready
+	# (call_deferred("_snap_to_home_planet")) and glues the rocket to
+	# the planet regardless of initial_position. These values are
+	# honored for any future level without an `is_home` planet, where
+	# the rocket truly spawns at a fixed point in space.
+	if spec.has("initial_position"):
+		var pos: Array = spec["initial_position"]
+		if pos.size() >= 2:
+			rocket.initial_position = Vector2(pos[0], pos[1])
+	if spec.has("initial_velocity"):
+		var vel: Array = spec["initial_velocity"]
+		if vel.size() >= 2:
+			rocket.initial_velocity = Vector2(vel[0], vel[1])
+
+
+## Instantiate the sun (at most one per level) and add to the given
+## container. Sun is a gravity source; it has no orbit so we just set
+## mass, radius, and position. @exports are set AFTER add_child per
+## skill §1.5.
+static func _instantiate_sun(spec: Dictionary, container: Node) -> void:
 	var sun := SUN_SCENE.instantiate()
-	get_node("../SunContainer").add_child(sun)
+	container.add_child(sun)
 	sun.mass = spec.get("mass", 4_000_000.0)
 	sun.radius = spec.get("radius", 200.0)
 	if spec.has("position"):
@@ -97,9 +175,9 @@ func _instantiate_sun(spec: Dictionary) -> void:
 ## @exports are set AFTER add_child per skill §1.5 — the planet script
 ## is fully initialized at that point. Note: the new @physics_process
 ## will run on the next frame, by which time all @exports are set.
-func _instantiate_planet(spec: Dictionary) -> void:
+static func _instantiate_planet(spec: Dictionary, container: Node) -> void:
 	var planet := PLANET_SCENE.instantiate()
-	get_node("../PlanetContainer").add_child(planet)
+	container.add_child(planet)
 
 	# Display name (read from JSON's "name" key, defaults to "planet"
 	# if missing). Used in win/lose UI and HUD to identify the planet
@@ -150,41 +228,6 @@ func _instantiate_planet(spec: Dictionary) -> void:
 		_instantiate_planet_moon(planet, moon_spec)
 
 
-## Configure the rocket's @exports from the JSON's "rocket" section.
-## The rocket is a placeholder in level.tscn; this method tunes its
-## per-level values (thrust, speed thresholds, fuel, etc.).
-##
-## Note: the rocket's _ready fires before this method runs (because
-## add_child triggers _ready). For level_01 this is fine because
-## _snap_to_home_planet positions the rocket correctly regardless of
-## the initial_position value. For levels without a home planet, the
-## initial_position override would be lost — see Phase 7 plan notes.
-func _configure_rocket(spec: Dictionary) -> void:
-	var rocket: Node2D = get_tree().get_first_node_in_group("player")
-	if rocket == null:
-		push_warning("LevelLoader: rocket not found in 'player' group (still loading?)")
-		return
-
-	# Initial position and velocity — only per-level values the JSON
-	# carries. Game-wide rocket characteristics (thrust, landing/crash
-	# thresholds, fuel capacity, etc.) are configured in rocket.gd's
-	# @export defaults so they're all in one place.
-	#
-	# For level_01 the home planet override runs in rocket._ready
-	# (call_deferred("_snap_to_home_planet")) and glues the rocket to
-	# the planet regardless of initial_position. These values are
-	# honored for any future level without an `is_home` planet, where
-	# the rocket truly spawns at a fixed point in space.
-	if spec.has("initial_position"):
-		var pos: Array = spec["initial_position"]
-		if pos.size() >= 2:
-			rocket.initial_position = Vector2(pos[0], pos[1])
-	if spec.has("initial_velocity"):
-		var vel: Array = spec["initial_velocity"]
-		if vel.size() >= 2:
-			rocket.initial_velocity = Vector2(vel[0], vel[1])
-
-
 ## Instantiate a moon as a CHILD of the given planet and configure its
 ## @exports from the JSON spec. Same init-order pattern as
 ## `_instantiate_planet`: add_child, set @exports, then call
@@ -201,7 +244,7 @@ func _configure_rocket(spec: Dictionary) -> void:
 ## PlanetContainer alongside them, and used a `host_planet_name` string
 ## lookup to find their host. The body_label lookup bug (commit
 ## `68bb4ba`) is gone with the new architecture.
-func _instantiate_planet_moon(planet: Node2D, spec: Dictionary) -> void:
+static func _instantiate_planet_moon(planet: Node2D, spec: Dictionary) -> void:
 	var moon := MOON_SCENE.instantiate()
 	planet.add_child(moon)
 
@@ -242,9 +285,9 @@ func _instantiate_planet_moon(planet: Node2D, spec: Dictionary) -> void:
 ## (touching crashes regardless of speed), `mass = 0.0` (joins the
 ## "attractors" group for collision but exerts no gravity), and
 ## optional `has_fuel` for risk/reward fuel pickup near the rock.
-func _instantiate_asteroid(spec: Dictionary) -> void:
+static func _instantiate_asteroid(spec: Dictionary, container: Node) -> void:
 	var asteroid := ASTEROID_SCENE.instantiate()
-	get_node("../PlanetContainer").add_child(asteroid)
+	container.add_child(asteroid)
 
 	# Gameplay flags.
 	asteroid.is_landable = spec.get("is_landable", false)
