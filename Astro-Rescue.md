@@ -367,15 +367,15 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 > within a section aren't strict priority — mix and match.
 
 ### 1. Verify last commit (`3b36cbc`) — do this first, unverified
-- Sun radius drags live (visual disk grows/shrinks with edits)
-- Sun has no Position field in inspector
-- Angle of Aphelion + Phase show `°` suffix and accept degrees
-- Body list stays visible after Add Moon (ScrollContainer fix)
-- If anything regresses, note the exact symptom and we'll dig in
+- ~~Sun radius drags live (visual disk grows/shrinks with edits)~~
+- ~~Sun has no Position field in inspector~~
+- ~~Angle of Aphelion + Phase show `°` suffix and accept degrees~~
+- ~~Body list stays visible after Add Moon (ScrollContainer fix)~~
+- ~~If anything regresses, note the exact symptom and we'll dig in~~ **Done 2026-07-07** — Jason verified all four at home before testing sliders.
 
 ### 2. Level editor — make it actually useful (active work)
 - **Phase 6: Test Level** — "play what I just made" button. Loads current spec into the game scene. Closes the edit → play loop.
-- **Phase 5: Pan + Zoom** — bodies at perihelion 9000 are off-screen at the fixed zoom. WASD pan + scroll zoom on the SubViewport Camera2D.
+- ~~**Phase 5: Pan + Zoom** — bodies at perihelion 9000 are off-screen at the fixed zoom. WASD pan + scroll zoom on the SubViewport Camera2D.~~ **Done 2026-07-07** (`7390648`, `c47e31c`, `325619e`) — plain left-click drag pans (cursor-centered zoom via wheel). Took 3 commits to get right because the first 2 missed the SubViewportContainer input-forwarding issue.
 - **Phase 6: Save / Save As + Load** — write spec to JSON. You'll want Load within one session of Save.
 - **Editor return path** — currently no way back to the main menu. Esc → confirm dialog.
 
@@ -387,7 +387,7 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 - **Fuel economy** — no in-transit refueling; asteroids support `has_fuel` for risk/reward near rocks, no level uses it yet
 
 ### 4. Cleanup (cheap)
-- Delete `scenes/level_01.tscn` — stale, untracked, unreferenced (project uses `scenes/level.tscn`; the only references are in `.godot/editor/` metadata which is gitignored)
+- ~~Delete `scenes/level_01.tscn` — stale, untracked, unreferenced (project uses `scenes/level.tscn`; the only references are in `.godot/editor/` metadata which is gitignored)~~ **Done 2026-07-07** (worktree now clean — no untracked files)
 - Decide `.uid` tracking policy — keep tracking vs move to `.gitignore`
 - Rename `PlanetContainer` → `BodyContainer`? Cosmetic; holds planets + asteroids
 
