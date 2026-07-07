@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://basteroid0000001"]
+[gd_scene format=3 uid="uid://cttto54csq5k3"]
 
 [ext_resource type="Script" path="res://scripts/asteroid.gd" id="1_asteroid"]
 [ext_resource type="Script" path="res://scripts/planettrajectoryline_2d.gd" id="2_trajectory"]
