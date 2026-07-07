@@ -23,7 +23,7 @@ class_name LevelEditor
 ## Moons are edited inline in the planet's inspector (since the
 ## top-level list only shows top-level bodies).
 ##
-## Save / Save As / Test Level remain stubs (Phase 6).
+## Save / Test Level remain stubs (Phase 6).
 ##
 ## Data flow:
 ##   UI mutates `spec` (in-memory Dictionary mirroring v3 JSON schema)
@@ -49,6 +49,14 @@ var spec: Dictionary = {
 		"initial_velocity": [0.0, 50.0],
 	},
 }
+
+
+# --- FileDialog for save (built in code, popped up on Save click) ---
+# Modal save dialog: blocks input until the user picks a path or cancels,
+# then returns to the editor. Filters to *.json so the suggested
+# extension matches the v3 JSON schema. Opens in user://levels/
+# (lazily created on first save by _on_save).
+var _save_dialog: FileDialog
 
 
 # --- UI references (created in _ready) ---
@@ -84,7 +92,7 @@ func _ready() -> void:
 # --- UI construction ---
 
 ## Top-level layout: HSplitContainer (sidebar | viewport) over a bottom
-## action bar (Save / Save As / Test Level).
+## action bar (Save / Test Level).
 func _build_ui() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
@@ -187,14 +195,29 @@ func _build_viewport(parent: Container) -> void:
 	_camera = camera  # save reference for input handlers
 
 
-## Bottom bar: Save / Save As / Test Level. All stubs for Phase 2/6.
+## Bottom bar: Save (path picker) / Test Level.
 func _build_action_bar(parent: Container) -> void:
 	var bar := HBoxContainer.new()
 	parent.add_child(bar)
 
 	bar.add_child(_make_button("Save", _on_save))
-	bar.add_child(_make_button("Save As...", _on_save_as))
 	bar.add_child(_make_button("Test Level", _on_test_level))
+	_build_save_dialog()
+
+
+## Build the FileDialog used by Save. Popped up on click; the dialog's
+## `file_selected` signal fires when the user picks a path, which calls
+## _on_save_dialog_file_selected. user:// is the right root for editor
+## saves — it's per-user data, writeable in exported builds.
+func _build_save_dialog() -> void:
+	var dialog := FileDialog.new()
+	dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dialog.access = FileDialog.ACCESS_USERDATA
+	dialog.current_dir = "user://levels"
+	dialog.filters = PackedStringArray(["*.json ; JSON level spec"])
+	dialog.file_selected.connect(_on_save_dialog_file_selected)
+	add_child(dialog)
+	_save_dialog = dialog
 
 
 # --- UI helpers ---
@@ -885,27 +908,33 @@ func _make_default_asteroid_spec() -> Dictionary:
 	}
 
 
-# --- Save / Test Level (Phase 6 MVP) ---
-# Save writes to a fixed user://levels/level_custom.json path. Future
-# Save As / Load will track a per-edit path; for now overwriting the
-# same file is fine for iteration during development. Test Level pushes
-# the in-memory spec into SaveState.test_spec and changes scene to
-# level.tscn — the loader checks that field before JSON and uses the
-# editor's spec as the source of truth during testing.
+# --- Save / Test Level (Phase 6) ---
+# Save opens a FileDialog (built in _build_save_dialog) so the user
+# picks the path/name. No "Save As" — with no per-edit tracked path
+# the distinction didn't add value (Jason's feedback after 38ee7ee).
+# Test Level pushes the in-memory spec into SaveState.test_spec and
+# changes scene to level.tscn — the loader checks that field before
+# JSON and uses the editor's spec as the source of truth.
 
-## Write the current in-memory spec to user://levels/level_custom.json
-## (creates the directory if missing). 2-space indent matches the
-## existing data/levels/level_NN.json files. Future: track a current
-## save path so multiple levels can coexist.
+## Save click: open the path-picker dialog (defaults to user://levels/).
 func _on_save() -> void:
-	const SAVE_DIR := "user://levels"
-	const SAVE_FILE := "level_custom.json"
-	if not DirAccess.dir_exists_absolute(SAVE_DIR):
-		var err := DirAccess.make_dir_recursive_absolute(SAVE_DIR)
-		if err != OK:
-			push_error("LevelEditor: failed to create %s (err %d)" % [SAVE_DIR, err])
+	# Lazily create the directory so the dialog has somewhere to land.
+	if not DirAccess.dir_exists_absolute("user://levels"):
+		DirAccess.make_dir_recursive_absolute("user://levels")
+	_save_dialog.popup_centered_ratio(0.6)
+
+
+## FileDialog callback: write the spec to the chosen path. 2-space
+## indent matches the existing data/levels/level_NN.json files. Creates
+## the parent directory if missing (FileDialog may show nested paths
+## the user navigated to).
+func _on_save_dialog_file_selected(path: String) -> void:
+	var dir_path := path.get_base_dir()
+	if not DirAccess.dir_exists_absolute(dir_path):
+		var mk_err := DirAccess.make_dir_recursive_absolute(dir_path)
+		if mk_err != OK:
+			push_error("LevelEditor: failed to create %s (err %d)" % [dir_path, mk_err])
 			return
-	var path := SAVE_DIR + "/" + SAVE_FILE
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		push_error("LevelEditor: failed to open %s for writing (err %d)" % [path, FileAccess.get_open_error()])
@@ -913,11 +942,6 @@ func _on_save() -> void:
 	file.store_string(JSON.stringify(spec, "  "))
 	file.close()
 	print("LevelEditor: saved to %s" % path)
-
-
-## Save As... (deferred to Phase 6 follow-up — needs a path picker).
-func _on_save_as() -> void:
-	push_warning("LevelEditor: Save As... (Phase 6 follow-up — not implemented yet)")
 
 
 ## "Play what I just made" — push the editor's spec into SaveState
