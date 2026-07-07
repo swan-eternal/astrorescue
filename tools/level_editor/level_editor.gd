@@ -55,6 +55,23 @@ var spec: Dictionary = {
 var _body_list: ItemList
 var _viewport_root: Node2D  # SubViewport's child Node2D
 var _inspector: VBoxContainer  # Phase 4: holds the per-body-type editor panel
+var _camera: Camera2D  # Phase 5: viewport camera, referenced for pan/zoom input
+
+
+# --- Phase 5 viewport control state + tunables ---
+# Middle-click drag (or Space+left-drag) pans; scroll wheel zooms. State
+# persists between drags so subsequent drags start from the last camera
+# position rather than the press position.
+var _is_panning: bool = false
+var _pan_start_screen_pos: Vector2 = Vector2.ZERO
+var _pan_start_camera_pos: Vector2 = Vector2.ZERO
+
+# Zoom range: small MIN so user can zoom out to see the whole system;
+# MAX = 1.0 (1:1 world-to-screen) is more than enough for editing.
+# ZOOM_STEP = 1.2 means each wheel notch zooms ~20%.
+const MIN_ZOOM: float = 0.001
+const MAX_ZOOM: float = 1.0
+const ZOOM_STEP: float = 1.2
 
 
 ## Build the UI, then render the initial (empty) viewport.
@@ -154,12 +171,14 @@ func _build_viewport(parent: Container) -> void:
 	_viewport_root.add_child(planet_container)
 
 	# Fixed camera at origin, zoomed out so bodies up to ~5000 units
-	# from origin fit in view. Phase 5 will add user-controllable pan
-	# and zoom.
+	# from origin fit in view. Phase 5: user-controllable pan (middle-
+	# click drag or Space+left-drag) and zoom (scroll wheel). Pan/zoom
+	# input handlers live in _unhandled_input below.
 	var camera := Camera2D.new()
 	camera.position = Vector2.ZERO
 	camera.zoom = Vector2(0.05, 0.05)
 	_viewport_root.add_child(camera)
+	_camera = camera  # save reference for input handlers
 
 
 ## Bottom bar: Save / Save As / Test Level. All stubs for Phase 2/6.
@@ -687,6 +706,69 @@ func _refresh_viewport() -> void:
 	# Clear + rebuild via the same path the JSON loader uses. The
 	# editor and the game share scene-building code → no math drift.
 	LevelLoader.build_scene_from_spec(spec, _viewport_root)
+
+
+# --- Phase 5: viewport camera control ---
+# Scroll wheel zooms (centered on the cursor — world point under the
+# mouse stays under the mouse across zoom levels). Middle-click drag
+# pans; Space + left-click drag is the alternative for mice without a
+# middle button. Uses _unhandled_input so events already consumed by
+# UI controls (e.g., a SpinBox's scroll-wheel increments) don't
+# double-fire on the camera.
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		match mb.button_index:
+			MOUSE_BUTTON_WHEEL_UP:
+				if mb.pressed:
+					_zoom_at_screen_pos(mb.position, ZOOM_STEP)
+					get_viewport().set_input_as_handled()
+			MOUSE_BUTTON_WHEEL_DOWN:
+				if mb.pressed:
+					_zoom_at_screen_pos(mb.position, 1.0 / ZOOM_STEP)
+					get_viewport().set_input_as_handled()
+			MOUSE_BUTTON_MIDDLE:
+				_set_panning(mb.pressed, mb.position)
+			MOUSE_BUTTON_LEFT:
+				# Space+left-drag = pan (alternative to middle-click).
+				if Input.is_key_pressed(KEY_SPACE):
+					_set_panning(mb.pressed, mb.position)
+	elif event is InputEventMouseMotion and _is_panning:
+		var mm := event as InputEventMouseMotion
+		# Camera moves OPPOSITE to cursor so the world appears to follow
+		# the drag (the standard Blender/Photoshop/VS Code convention).
+		var delta: Vector2 = mm.position - _pan_start_screen_pos
+		_camera.position = _pan_start_camera_pos - delta / _camera.zoom
+
+
+## Start or end a pan gesture. Captures the start screen pos + camera
+## pos on press so the gesture is anchored (no jump when you start
+## dragging from a non-origin camera position).
+func _set_panning(pressed: bool, screen_pos: Vector2) -> void:
+	_is_panning = pressed
+	if _is_panning:
+		_pan_start_screen_pos = screen_pos
+		_pan_start_camera_pos = _camera.position
+	get_viewport().set_input_as_handled()
+
+
+## Zoom the camera by `factor` (1.2 ≈ +20% per wheel notch) while
+## keeping the world point under `screen_pos` fixed under the cursor.
+## Without this, zooming moves the view away from where the user is
+## looking. Clamped to [MIN_ZOOM, MAX_ZOOM] so the camera can't zoom
+## out to a black void or zoom in past useful detail.
+func _zoom_at_screen_pos(screen_pos: Vector2, factor: float) -> void:
+	var old_zoom: Vector2 = _camera.zoom
+	var new_zoom: Vector2 = (old_zoom * factor).clamp(
+		Vector2(MIN_ZOOM, MIN_ZOOM), Vector2(MAX_ZOOM, MAX_ZOOM))
+	if new_zoom == old_zoom:
+		return  # hit clamp, nothing to do
+	# Move the camera so the world point under `screen_pos` stays put.
+	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
+	var offset: Vector2 = screen_pos - viewport_size / 2.0
+	_camera.position += offset * (1.0 / old_zoom - 1.0 / new_zoom)
+	_camera.zoom = new_zoom
 
 
 # --- Default spec templates (Phase 4: include all loader-known fields) ---
