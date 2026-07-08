@@ -5,6 +5,7 @@
 [ext_resource type="PackedScene" uid="uid://f287r1g8xsim" path="res://scenes/hud.tscn" id="3_hud"]
 [ext_resource type="Script" uid="uid://cqatk6q3c3jym" path="res://scripts/rocket_camera.gd" id="4_rcam"]
 [ext_resource type="Script" path="res://scripts/level_loader.gd" id="5_loader"]
+[ext_resource type="Script" path="res://scripts/pause_menu.gd" id="6_pause"]
 
 [node name="level" type="Node2D"]
 
@@ -25,3 +26,6 @@ script = ExtResource("4_rcam")
 
 [node name="LevelLoader" type="Node" parent="."]
 script = ExtResource("5_loader")
+
+[node name="PauseMenu" type="CanvasLayer" parent="."]
+script = ExtResource("6_pause")

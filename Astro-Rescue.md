@@ -383,11 +383,12 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 ### 3. Game-side polish (independent of editor)
 - **Multi-astronaut rescue** — 2-3 levels where one trip isn't enough
 - **Asteroid belt** — at least one level using asteroids as a deliberate "thread the needle" course (asteroids are implemented, but no level uses them that way yet)
-- **Faster time warp** — extend `TIME_WARP_LEVELS` from `[1, 2, 4, 8]` to include 16× and 32×
+- ~~**Faster time warp** — extend `TIME_WARP_LEVELS` from `[1, 2, 4, 8]` to include 16× and 32×~~ **Done 2026-07-07** — 16× added (`scripts/rocket.gd:152`); 32× deliberately not added (Jason's call). Stepping through [> now goes 1× → 2× → 4× → 8× → 16×; [< reverses.
 - **Crash/landing speed tuning** — playtest the 80/150 defaults (untested per the old doc)
 - **Fuel economy** — no in-transit refueling; asteroids support `has_fuel` for risk/reward near rocks, no level uses it yet
 - ~~**Custom Levels button in level_select** — list core levels (1-3) as today, then a "Custom Levels" button that prompts for a JSON in user://levels/ and launches it.~~ **Done 2026-07-07** (`5de863c` + this commit) — uses the same SaveState.pending_spec mechanism as Test Level; renamed from test_spec to pending_spec since the field now serves two callers (editor + level select).
 - **Trajectory prediction crash at extreme mass ratios** — Jason hit a crash with an extremely massive planet. Likely a numerical issue in `OrbitCalculator.compute_state` when planet mass >> sun mass. The slider limits (`PLANET_MASS` etc.) are upper bounds only; tightening them keeps the user out of the failure mode but doesn't fix the underlying math. Worth investigating when there's time.
+- ~~**Pause menu** — Esc during gameplay should pause + show a small panel with Continue and Main Menu options.~~ **Done 2026-07-07** — `scripts/pause_menu.gd` + `PauseMenu` (CanvasLayer) node in `level.tscn`. Esc pauses (sets `get_tree().paused = true`), shows the panel; Continue or Esc-while-paused unpauses; Main Menu unpauses + returns to main menu. Uses `PROCESS_MODE_ALWAYS` so the menu stays interactive while the rest of the game tree is paused; layer 100 draws over the HUD.
 
 ### 4. Cleanup (cheap)
 - ~~Delete `scenes/level_01.tscn` — stale, untracked, unreferenced (project uses `scenes/level.tscn`; the only references are in `.godot/editor/` metadata which is gitignored)~~ **Done 2026-07-07** (worktree now clean — no untracked files)

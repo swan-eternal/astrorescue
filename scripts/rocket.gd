@@ -149,7 +149,7 @@ var picked_up_count: int = 0
 # 0 = 1× (real-time), max = 8×. Engine.time_scale drives the global
 # sim rate — physics, _process, etc. all run faster, and delta scales
 # with it, so fuel burn at 8× is 8× per thrust tick.
-const TIME_WARP_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0]
+const TIME_WARP_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0, 16.0]
 
 # Current index into TIME_WARP_LEVELS.
 var time_warp_index: int = 0

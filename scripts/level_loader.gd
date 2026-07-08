@@ -270,8 +270,8 @@ static func _instantiate_planet(spec: Dictionary, container: Node) -> void:
 ## lookup to find their host. The body_label lookup bug (commit
 ## `68bb4ba`) is gone with the new architecture.
 
-Note: "PlanetContainer" was renamed to "BodyContainer" in 2026-07-07
-when the container's actual role expanded to hold asteroids too.
+# Note: "PlanetContainer" was renamed to "BodyContainer" in 2026-07-07
+# when the container's actual role expanded to hold asteroids too.
 static func _instantiate_planet_moon(planet: Node2D, spec: Dictionary) -> void:
 	var moon := MOON_SCENE.instantiate()
 	planet.add_child(moon)
