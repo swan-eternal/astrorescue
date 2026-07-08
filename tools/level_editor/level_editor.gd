@@ -89,6 +89,47 @@ const MAX_ZOOM: float = 1.0
 const ZOOM_STEP: float = 1.2
 
 
+# --- Inspector field limits (tunable, edit here) ---
+# Each Vector3 holds (min, max, step) for one numeric field. The
+# field-builder functions reference these constants, so editing
+# any of them changes the slider/input range for that field across
+# the whole editor. Tune for Astro-Rescue-scale levels: perihelion
+# up to ~10000 world units, sun mass up to ~1e8. Widen if you need
+# bigger levels; tighten if you want a tighter playable range.
+#
+# Angle/phase fields have a fixed -180..180 range (see
+# _add_slider_with_input_degrees_field) — angles wrap modulo 2π,
+# no meaningful tuning there.
+
+# Sun (always present, single per level — high mass range, IS the gravity source)
+const SUN_MASS := Vector3(0.0, 1e8, 1000.0)
+const SUN_RADIUS := Vector3(1.0, 1000.0, 1.0)
+
+# Planet (main orbit range)
+const PLANET_MASS := Vector3(0.0, 1e7, 100.0)
+const PLANET_RADIUS := Vector3(1.0, 500.0, 1.0)
+
+# Asteroid (small inner-system bodies)
+const ASTEROID_MASS := Vector3(0.0, 1e5, 1.0)
+const ASTEROID_RADIUS := Vector3(1.0, 200.0, 1.0)
+
+# Moon (surface-relative to host planet — smaller distances)
+const MOON_MASS := Vector3(0.0, 1e5, 1.0)
+const MOON_RADIUS := Vector3(1.0, 100.0, 1.0)
+
+# Orbital distance (perihelion / aphelion)
+const ORBIT_DISTANCE := Vector3(0.0, 10000.0, 10.0)  # planet + asteroid
+const MOON_ORBIT_DISTANCE := Vector3(0.0, 200.0, 1.0)  # moon (surface-relative)
+
+# Orbital speed (negative = retrograde). Covers Astro-Rescue's existing
+# JSON values + headroom for experimentation.
+const ORBIT_SPEED := Vector3(-10.0, 10.0, 0.01)
+
+# Fuel orbit radius (around host planet for fuel pickup)
+const FUEL_ORBIT_RADIUS := Vector3(0.0, 500.0, 1.0)  # planet + asteroid
+const MOON_FUEL_ORBIT_RADIUS := Vector3(0.0, 200.0, 1.0)  # moon
+
+
 ## Build the UI, ensure the sun invariant, then render the viewport.
 ## The sun is always present (auto-injected if missing) and is locked
 ## against removal — matches the physics invariant (orbit math treats
@@ -291,10 +332,11 @@ func _body_label_for(body: Dictionary, index: int) -> String:
 	var name: String = body.get("name", "")
 	match type:
 		"sun":
-			# Sun is locked (always present, non-removable). Surface
-			# that in the label so the user has a hint when Remove is
-			# a no-op on the selected sun.
-			return "Sun (locked, mass %.0f)" % float(body.get("mass", 0))
+			# No "locked" indicator — sun is always present by design,
+			# and the user will figure that out from the body list
+			# always containing exactly one Sun (Jason's preference
+			# after e7ae08c's locked-label was deemed too utilitarian).
+			return "Sun (mass %.0f)" % float(body.get("mass", 0))
 		"planet":
 			var moons_count: int = body.get("moons", []).size()
 			var moons_suffix: String = ""
@@ -364,8 +406,8 @@ func _clear_inspector() -> void:
 # sees their changes immediately.
 
 func _build_sun_fields(body: Dictionary, _index: int) -> void:
-	_add_slider_with_input_field("Mass", body, "mass", 0.0, 1e8, 1000.0)
-	_add_slider_with_input_field("Radius", body, "radius", 1.0, 1000.0, 1.0)
+	_add_slider_with_input_field("Mass", body, "mass", SUN_MASS.x, SUN_MASS.y, SUN_MASS.z)
+	_add_slider_with_input_field("Radius", body, "radius", SUN_RADIUS.x, SUN_RADIUS.y, SUN_RADIUS.z)
 	_add_check_box_field("Landable", body, "is_landable")
 	# No position field — the sun is locked to (0, 0). Orbit math
 	# treats origin as the sun, so a non-zero visual position would
@@ -378,28 +420,28 @@ func _build_planet_fields(body: Dictionary, _index: int) -> void:
 	_add_check_box_field("Home", body, "is_home")
 	_add_check_box_field("Has Astronaut", body, "has_astronaut")
 	_add_check_box_field("Has Fuel", body, "has_fuel")
-	_add_slider_with_input_field("Mass", body, "mass", 0.0, 1e7, 100.0)
-	_add_slider_with_input_field("Radius", body, "radius", 1.0, 500.0, 1.0)
+	_add_slider_with_input_field("Mass", body, "mass", PLANET_MASS.x, PLANET_MASS.y, PLANET_MASS.z)
+	_add_slider_with_input_field("Radius", body, "radius", PLANET_RADIUS.x, PLANET_RADIUS.y, PLANET_RADIUS.z)
 	_add_color_picker_field(body, "color")
-	_add_slider_with_input_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
-	_add_slider_with_input_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
+	_add_slider_with_input_field("Perihelion", body, "perihelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
+	_add_slider_with_input_field("Aphelion", body, "aphelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", body, "phase")
-	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
-	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
+	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", FUEL_ORBIT_RADIUS.x, FUEL_ORBIT_RADIUS.y, FUEL_ORBIT_RADIUS.z)
+	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", ORBIT_SPEED.x, ORBIT_SPEED.y, ORBIT_SPEED.z)
 	_add_moons_section(body)
 
 
 func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
-	_add_slider_with_input_field("Mass", body, "mass", 0.0, 1e5, 1.0)
-	_add_slider_with_input_field("Radius", body, "radius", 1.0, 200.0, 1.0)
+	_add_slider_with_input_field("Mass", body, "mass", ASTEROID_MASS.x, ASTEROID_MASS.y, ASTEROID_MASS.z)
+	_add_slider_with_input_field("Radius", body, "radius", ASTEROID_RADIUS.x, ASTEROID_RADIUS.y, ASTEROID_RADIUS.z)
 	_add_color_picker_field(body, "color")
 	_add_check_box_field("Landable", body, "is_landable")
 	_add_check_box_field("Has Fuel", body, "has_fuel")
-	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", 0.0, 500.0, 1.0)
-	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", -10.0, 10.0, 0.01)
-	_add_slider_with_input_field("Perihelion", body, "perihelion", 0.0, 10000.0, 10.0)
-	_add_slider_with_input_field("Aphelion", body, "aphelion", 0.0, 10000.0, 10.0)
+	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", FUEL_ORBIT_RADIUS.x, FUEL_ORBIT_RADIUS.y, FUEL_ORBIT_RADIUS.z)
+	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", ORBIT_SPEED.x, ORBIT_SPEED.y, ORBIT_SPEED.z)
+	_add_slider_with_input_field("Perihelion", body, "perihelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
+	_add_slider_with_input_field("Aphelion", body, "aphelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", body, "phase")
 
@@ -637,18 +679,18 @@ func _add_moon_editor(planet_body: Dictionary, moon_index: int) -> void:
 	header.add_child(remove_btn)
 	_inspector.add_child(header)
 	# Moon fields — match scripts/level_loader.gd `_instantiate_planet_moon`.
-	_add_slider_with_input_field("Radius", moon, "radius", 1.0, 100.0, 1.0)
+	_add_slider_with_input_field("Radius", moon, "radius", MOON_RADIUS.x, MOON_RADIUS.y, MOON_RADIUS.z)
 	_add_color_picker_field(moon, "color")
 	_add_check_box_field("Landable", moon, "is_landable")
 	_add_check_box_field("Has Astronaut", moon, "has_astronaut")
 	_add_check_box_field("Has Fuel", moon, "has_fuel")
-	_add_slider_with_input_field("Mass", moon, "mass", 0.0, 1e5, 1.0)
-	_add_slider_with_input_field("Perihelion", moon, "perihelion", 0.0, 200.0, 1.0)
-	_add_slider_with_input_field("Aphelion", moon, "aphelion", 0.0, 200.0, 1.0)
+	_add_slider_with_input_field("Mass", moon, "mass", MOON_MASS.x, MOON_MASS.y, MOON_MASS.z)
+	_add_slider_with_input_field("Perihelion", moon, "perihelion", MOON_ORBIT_DISTANCE.x, MOON_ORBIT_DISTANCE.y, MOON_ORBIT_DISTANCE.z)
+	_add_slider_with_input_field("Aphelion", moon, "aphelion", MOON_ORBIT_DISTANCE.x, MOON_ORBIT_DISTANCE.y, MOON_ORBIT_DISTANCE.z)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", moon, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", moon, "phase")
-	_add_slider_with_input_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", 0.0, 200.0, 1.0)
-	_add_slider_with_input_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", -10.0, 10.0, 0.01)
+	_add_slider_with_input_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", MOON_FUEL_ORBIT_RADIUS.x, MOON_FUEL_ORBIT_RADIUS.y, MOON_FUEL_ORBIT_RADIUS.z)
+	_add_slider_with_input_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", ORBIT_SPEED.x, ORBIT_SPEED.y, ORBIT_SPEED.z)
 
 
 func _add_add_moon_button(planet_body: Dictionary) -> void:
