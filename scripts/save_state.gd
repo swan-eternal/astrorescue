@@ -20,11 +20,12 @@ var current_level_number: int = 0
 
 
 # Editor test-spec: when non-empty, the next level scene to load uses
-# this spec instead of reading JSON from disk. Set by the level editor's
-# Test Level button. Consumed (set back to {}) by LevelLoader._load_level
-# on use — one-shot transfer mechanism so subsequent level loads fall
-# back to the normal JSON path.
-var test_spec: Dictionary = {}
+# this spec instead of reading JSON from disk. Set by either the level
+# editor's Test Level button or the level select menu's Custom Levels
+# button. Consumed (set back to {}) by LevelLoader._load_level on use
+# — one-shot transfer mechanism so subsequent level loads fall back
+# to the normal JSON path.
+var pending_spec: Dictionary = {}
 
 
 ## Load the saved state from disk on startup, so the menu's

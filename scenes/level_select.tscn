@@ -62,6 +62,11 @@ custom_minimum_size = Vector2(220, 0)
 layout_mode = 2
 custom_minimum_size = Vector2(0, 30)
 
+[node name="CustomLevelsButton" type="Button" parent="CenterContainer/VBoxContainer"]
+layout_mode = 2
+text = "Custom Levels"
+custom_minimum_size = Vector2(220, 0)
+
 [node name="BackButton" type="Button" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 text = "Back to Main Menu"

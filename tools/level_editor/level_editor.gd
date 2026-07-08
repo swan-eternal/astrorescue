@@ -987,7 +987,7 @@ func _make_default_asteroid_spec() -> Dictionary:
 # the distinction didn't add value (Jason's feedback after 38ee7ee).
 # Load opens a FileDialog in OPEN_FILE mode, parses the JSON, replaces
 # the in-memory spec, and refreshes the body list / viewport / inspector.
-# Test Level pushes the in-memory spec into SaveState.test_spec and
+# Test Level pushes the in-memory spec into SaveState.pending_spec and
 # changes scene to level.tscn — the loader checks that field before
 # JSON and uses the editor's spec as the source of truth.
 
@@ -1076,10 +1076,10 @@ func _has_sun() -> bool:
 
 ## "Play what I just made" — push the editor's spec into SaveState
 ## and change to the actual game scene. The loader checks
-## SaveState.test_spec before reading JSON, so the editor's in-memory
+## SaveState.pending_spec before reading JSON, so the editor's in-memory
 ## spec is the source of truth. Loader consumes the field (sets back
 ## to {}) so subsequent scene loads (e.g., winning the test and then
 ## Next Level) fall back to JSON.
 func _on_test_level() -> void:
-	SaveState.test_spec = spec
+	SaveState.pending_spec = spec
 	get_tree().change_scene_to_file("res://scenes/level.tscn")
