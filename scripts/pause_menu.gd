@@ -11,6 +11,7 @@ extends CanvasLayer
 ##
 
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
+const SETTINGS_MENU_SCENE := "res://scenes/settings_menu.tscn"
 
 # Cached so we can show/hide the panel without rebuilding it.
 var _panel: PanelContainer
@@ -59,6 +60,11 @@ func _build_ui() -> void:
 	continue_btn.pressed.connect(_on_continue_pressed)
 	vbox.add_child(continue_btn)
 
+	var settings_btn := Button.new()
+	settings_btn.text = "Settings"
+	settings_btn.pressed.connect(_on_settings_pressed)
+	vbox.add_child(settings_btn)
+
 	var main_menu_btn := Button.new()
 	main_menu_btn.text = "Main Menu"
 	main_menu_btn.pressed.connect(_on_main_menu_pressed)
@@ -71,6 +77,12 @@ func _build_ui() -> void:
 ## only after we've decided to act).
 func _unhandled_input(event: InputEvent) -> void:
 	if not (event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE):
+		return
+	# If a settings panel is open, let IT handle Esc (it will close
+	# itself and call set_input_as_handled). Don't act on this event
+	# here — otherwise the game would resume underneath the settings
+	# overlay as the player closes it.
+	if SettingsMenu.is_any_open():
 		return
 	if get_tree().paused:
 		_on_continue_pressed()
@@ -97,3 +109,22 @@ func _on_continue_pressed() -> void:
 func _on_main_menu_pressed() -> void:
 	get_tree().paused = false
 	get_tree().change_scene_to_file(MAIN_MENU_SCENE)
+
+
+## Open the settings panel as an overlay on top of the paused game.
+## Hides the pause panel; settings shows Audio/Visual/Gameplay tabs.
+## When settings closes (Esc or Close button), its tree_exited signal
+## triggers _on_settings_closed and the pause panel reappears. Game
+## stays paused throughout — the player is just adjusting settings.
+func _on_settings_pressed() -> void:
+	_panel.visible = false
+	var settings: CanvasLayer = load(SETTINGS_MENU_SCENE).instantiate()
+	settings.tree_exited.connect(_on_settings_closed)
+	add_child(settings)
+
+
+## Settings closed (queue_free completed at end of frame). Restore
+## the pause panel so the player can resume or quit. Game remains
+## paused the whole time.
+func _on_settings_closed() -> void:
+	_panel.visible = true

@@ -25,13 +25,18 @@ var _thruster_player: AudioStreamPlayer
 ## the loop stays seamless when start_thruster() is called.
 func _ready() -> void:
 	# Music player: one stream at a time, swapped when the scene changes.
+	# Routed to the "Music" bus so the music volume slider only affects
+	# music and not SFX.
 	_music_player = AudioStreamPlayer.new()
+	_music_player.bus = "Music"
 	add_child(_music_player)
 
 	# Thruster player: long-lived so the loop is seamless. The thruster.mp3
 	# stream is set to loop=true in play_looping_stream() so the sound
-	# sustains as long as start_thruster() has been called.
+	# sustains as long as start_thruster() has been called. Routed to
+	# the "SFX" bus.
 	_thruster_player = AudioStreamPlayer.new()
+	_thruster_player.bus = "SFX"
 	var thruster_stream: AudioStream = load(SFX_THRUSTER)
 	_thruster_player.stream = thruster_stream
 	add_child(_thruster_player)
@@ -99,9 +104,10 @@ func stop_thruster() -> void:
 
 ## Play a one-shot SFX from `path`. Creates a fresh AudioStreamPlayer,
 ## connects its `finished` signal to queue_free so we don't leak nodes
-## after each pickup sound.
+## after each pickup sound. Routed to the "SFX" bus.
 func play_oneshot(path: String) -> void:
 	var player: AudioStreamPlayer = AudioStreamPlayer.new()
+	player.bus = "SFX"
 	add_child(player)
 	player.stream = load(path)
 	player.play()

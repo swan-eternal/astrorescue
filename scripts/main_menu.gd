@@ -15,6 +15,11 @@ extends Control
 # filename pattern. Bump this when adding new levels.
 const MAX_LEVEL: int = 3
 
+# Settings panel scene used by the Settings button. Same scene
+# the pause menu instances — settings_menu handles its own Esc/Close
+# and queue_frees itself; main_menu stays as the backdrop.
+const SETTINGS_MENU_SCENE := "res://scenes/settings_menu.tscn"
+
 
 ## Wire up button signals, start the menu music, and toggle the Start
 ## button's label between "Start" (fresh save) and "Continue"
@@ -23,6 +28,7 @@ func _ready() -> void:
 	$CenterContainer/VBoxContainer/StartButton.pressed.connect(_on_start_pressed)
 	$CenterContainer/VBoxContainer/HowToPlayButton.pressed.connect(_on_how_to_play_pressed)
 	$CenterContainer/VBoxContainer/LevelSelectButton.pressed.connect(_on_level_select_pressed)
+	$CenterContainer/VBoxContainer/SettingsButton.pressed.connect(_on_settings_pressed)
 	$CenterContainer/VBoxContainer/QuitButton.pressed.connect(_on_quit_pressed)
 	$CenterContainer/VBoxContainer/LevelEditorButton.pressed.connect(_on_level_editor_pressed)
 	close_button.pressed.connect(_on_how_to_play_close)
@@ -83,6 +89,18 @@ func _on_level_editor_pressed() -> void:
 		push_warning("Level editor scene not available in this build.")
 		return
 	get_tree().change_scene_to_file(LEVEL_EDITOR_SCENE)
+
+
+## Settings-button handler: instance the settings panel as an overlay
+## on top of the main menu. Settings handles its own Esc/Close and
+## queue_frees itself; main_menu stays as the backdrop (no scene
+## change). No-op if a settings panel is already open (guards
+## against double-clicks stacking duplicate panels).
+func _on_settings_pressed() -> void:
+	if SettingsMenu.is_any_open():
+		return
+	var settings: CanvasLayer = load(SETTINGS_MENU_SCENE).instantiate()
+	add_child(settings)
 
 
 ## Find the highest level the player has unlocked (i.e., the most
