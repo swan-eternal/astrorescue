@@ -121,9 +121,14 @@ const MOON_RADIUS := Vector3(1.0, 100.0, 1.0)
 const ORBIT_DISTANCE := Vector3(0.0, 10000.0, 10.0)  # planet + asteroid
 const MOON_ORBIT_DISTANCE := Vector3(0.0, 200.0, 1.0)  # moon (surface-relative)
 
-# Orbital speed (negative = retrograde). Covers Astro-Rescue's existing
-# JSON values + headroom for experimentation.
-const ORBIT_SPEED := Vector3(-10.0, 10.0, 0.01)
+# Fuel pickup angular speed (radians/second, negative = retrograde).
+# This is the speed of the FUEL PICKUP orbiting its host at
+# fuel_orbit_radius — NOT the host's own orbital speed around the
+# sun (that's derived from perihelion/aphelion/sun_mass by
+# OrbitCalculator.compute_state, no user input needed). Range
+# -10..10 covers anything reasonable: 0.5 = one rev per ~12s
+# (default, catchable), 10 = one rev per ~0.6s (hard mode).
+const FUEL_ORBIT_SPEED := Vector3(-10.0, 10.0, 0.01)
 
 # Fuel orbit radius (around host planet for fuel pickup)
 const FUEL_ORBIT_RADIUS := Vector3(0.0, 500.0, 1.0)  # planet + asteroid
@@ -428,7 +433,7 @@ func _build_planet_fields(body: Dictionary, _index: int) -> void:
 	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", body, "phase")
 	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", FUEL_ORBIT_RADIUS.x, FUEL_ORBIT_RADIUS.y, FUEL_ORBIT_RADIUS.z)
-	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", ORBIT_SPEED.x, ORBIT_SPEED.y, ORBIT_SPEED.z)
+	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", FUEL_ORBIT_SPEED.x, FUEL_ORBIT_SPEED.y, FUEL_ORBIT_SPEED.z)
 	_add_moons_section(body)
 
 
@@ -439,7 +444,7 @@ func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
 	_add_check_box_field("Landable", body, "is_landable")
 	_add_check_box_field("Has Fuel", body, "has_fuel")
 	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", FUEL_ORBIT_RADIUS.x, FUEL_ORBIT_RADIUS.y, FUEL_ORBIT_RADIUS.z)
-	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", ORBIT_SPEED.x, ORBIT_SPEED.y, ORBIT_SPEED.z)
+	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", FUEL_ORBIT_SPEED.x, FUEL_ORBIT_SPEED.y, FUEL_ORBIT_SPEED.z)
 	_add_slider_with_input_field("Perihelion", body, "perihelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
 	_add_slider_with_input_field("Aphelion", body, "aphelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
@@ -690,7 +695,7 @@ func _add_moon_editor(planet_body: Dictionary, moon_index: int) -> void:
 	_add_slider_with_input_degrees_field("Angle of Aphelion", moon, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", moon, "phase")
 	_add_slider_with_input_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", MOON_FUEL_ORBIT_RADIUS.x, MOON_FUEL_ORBIT_RADIUS.y, MOON_FUEL_ORBIT_RADIUS.z)
-	_add_slider_with_input_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", ORBIT_SPEED.x, ORBIT_SPEED.y, ORBIT_SPEED.z)
+	_add_slider_with_input_field("Fuel Orbit Speed", moon, "fuel_orbit_speed", FUEL_ORBIT_SPEED.x, FUEL_ORBIT_SPEED.y, FUEL_ORBIT_SPEED.z)
 
 
 func _add_add_moon_button(planet_body: Dictionary) -> void:
