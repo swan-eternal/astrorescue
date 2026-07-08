@@ -7,3 +7,10 @@
 
 # Godot-specific output
 .godot/
+
+# Stale hand-authored level scene, no longer used by the project —
+# LevelLoader reads data/levels/level_NN.json, not this .tscn. Godot
+# keeps regenerating it because the path is in its recent-scenes
+# list (see .godot/editor/editor_layout.cfg). The file is harmless on
+# disk; this entry just keeps `git status` clean.
+scenes/level_01.tscn

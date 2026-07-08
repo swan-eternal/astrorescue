@@ -13,7 +13,7 @@ script = ExtResource("1_lctrl")
 
 [node name="SunContainer" type="Node2D" parent="."]
 
-[node name="PlanetContainer" type="Node2D" parent="."]
+[node name="BodyContainer" type="Node2D" parent="."]
 
 [node name="rocket" parent="." instance=ExtResource("2_rocket")]
 

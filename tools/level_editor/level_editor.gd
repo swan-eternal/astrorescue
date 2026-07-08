@@ -213,7 +213,7 @@ func _build_sidebar(parent: Container) -> void:
 
 
 ## Right panel: SubViewportContainer + SubViewport with a scene tree
-## that matches level.tscn (SunContainer + PlanetContainer as named
+## that matches level.tscn (SunContainer + BodyContainer as named
 ## children of a Node2D root) so LevelLoader.build_scene_from_spec
 ## can find them by name.
 func _build_viewport(parent: Container) -> void:
@@ -239,9 +239,9 @@ func _build_viewport(parent: Container) -> void:
 	sun_container.name = "SunContainer"
 	_viewport_root.add_child(sun_container)
 
-	var planet_container := Node2D.new()
-	planet_container.name = "PlanetContainer"
-	_viewport_root.add_child(planet_container)
+	var body_container := Node2D.new()
+	body_container.name = "BodyContainer"
+	_viewport_root.add_child(body_container)
 
 	# Fixed camera at origin, zoomed out so bodies up to ~5000 units
 	# from origin fit in view. Phase 5: user-controllable pan (middle-
@@ -829,6 +829,15 @@ func _refresh_viewport() -> void:
 # meant for sidebar buttons / body list / inspector.
 
 func _input(event: InputEvent) -> void:
+	# Esc returns to the main menu. Works from anywhere in the editor
+	# — no confirmation dialog (the editor doesn't track unsaved
+	# changes, so prompting without tracking would be theatre). If
+	# the user wants to keep their work, they Save before Esc.
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+		get_viewport().set_input_as_handled()
+		return
+
 	if not (event is InputEventMouseButton or event is InputEventMouseMotion):
 		return
 	# Only handle events over the viewport area — clicks/drags in the

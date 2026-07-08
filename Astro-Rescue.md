@@ -1,6 +1,6 @@
 # Astro-Rescue
 
-> **Status (2026-07-06):** Core gameplay loop working end-to-end — land on home planet, take off, transfer between planets via gravity, rescue astronaut, return home, win/lose flow all functional. Sun collision implemented (`is_landable` flag + `radius` @export); moons and asteroids are body types alongside sun and planet (level_01 uses all four). **Moon refactor (uncommitted):** moons are now scene-tree children of their host planets (in JSON and at runtime), with orbit distance measured from the planet's **surface** — impossible to render a moon inside its planet. **21 commits ahead of origin/main**, not yet pushed. Working tree dirty: this doc's in-progress updates, the uncommitted moon refactor (`scripts/moon.gd` rewrite, `scripts/level_loader.gd` changes, `data/levels/level_*.json` bumped to v3).
+> **Status (2026-07-07):** Core gameplay loop working end-to-end. Sun + 4 body types (sun/planet/moon/asteroid), all with closed-form orbital mechanics. Level editor complete (Phase 2/4/5/6): shell + per-body-type inspector + pan/zoom + Save (path picker) / Load / Test Level / Custom Levels menu entry / Esc-to-main-menu return path. **43 commits ahead of origin/main**, not yet pushed. Working tree has uncommitted cleanup batch (level_01 gitignore, BodyContainer rename, editor return path) — commit ready when you give the word.
 >
 > **Engine:** Godot 4.x
 > **Project root:** `rocketman/astrorescue-main/rocketman/`
@@ -27,7 +27,7 @@
 
 **Stage 3** (`5fde0e7`) — Shared `level.tscn` + JSON-driven loading:
 - `scripts/level_loader.gd` — reads `data/levels/level_<n>.json` (n from `SaveState.current_level_number`), instantiates bodies from the `bodies[]` spec, configures the rocket's @exports. Per skill §1.5, @exports assigned AFTER `add_child` so the script is fully initialized.
-- `scenes/level.tscn` — new shared scene with infrastructure only (LevelController, SunContainer, PlanetContainer, rocket placeholder with rocketCamera child, HUD, LevelLoader). No per-level bodies.
+- `scenes/level.tscn` — new shared scene with infrastructure only (LevelController, SunContainer, BodyContainer, rocket placeholder with rocketCamera child, HUD, LevelLoader). No per-level bodies.
 - Wired `SaveState.current_level_number` through `level_select._on_level_selected`, `main_menu._on_start_pressed`, `win_screen._on_restart_pressed`, `lose_screen._on_restart_pressed`. Fixes the hardcoded `'level_01.tscn'` Restart bug.
 - `data/levels/level_02.json`, `data/levels/level_03.json` authored with circular orbits (positions match originals exactly, verified via Python port).
 
@@ -159,7 +159,7 @@ The fix makes moons scene-tree children of their host planet. `get_parent()` is 
 
 **Other effects:**
 - The `68bb4ba` body_label lookup bug is gone at the architecture level (the lookup pattern no longer exists for moons).
-- `PlanetContainer` now holds only planets and asteroids — moons are inside their planets. The `📦 PlanetContainer is misnamed` backlog entry is updated accordingly.
+- `BodyContainer` (renamed from PlanetContainer on 2026-07-07) holds planets and asteroids — moons are inside their planets as scene-tree children.
 - The `🟡 Visual scale balance across body types` TODO is resolved — moon-vs-planet scale can't make the moon render inside the planet anymore.
 
 ## Architecture
@@ -173,7 +173,7 @@ The fix makes moons scene-tree children of their host planet. `get_parent()` is 
 level (Node2D)
 ├── LevelController (Node) — `scripts/level_controller.gd`
 ├── SunContainer (Node2D) — sun instance added by loader
-├── PlanetContainer (Node2D) — planet + moon + asteroid instances added by loader (naming is historical)
+├── BodyContainer (Node2D) — planet + asteroid instances added by loader (moons are children of their host planets, not siblings here)
 ├── rocket (Node2D) — `scenes/rocket.tscn`
 │   ├── Polygon2D (visual triangle)
 │   ├── Line2D — `scripts/trajectoryline_2d.gd`
@@ -356,7 +356,7 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 2625cea first commit
 ```
 
-**Working tree:** 21 commits ahead of origin/main. Not pushed yet (testing first).
+**Working tree:** 43 commits ahead of origin/main (post-cleanup-batch commit). Not pushed yet (testing first).
 
 ## Known Issues & TODOs
 
@@ -377,7 +377,8 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 - **Phase 6: Test Level** — "play what I just made" button. Loads current spec into the game scene. Closes the edit → play loop.
 - ~~**Phase 5: Pan + Zoom** — bodies at perihelion 9000 are off-screen at the fixed zoom. WASD pan + scroll zoom on the SubViewport Camera2D.~~ **Done 2026-07-07** (`7390648`, `c47e31c`, `325619e`) — plain left-click drag pans (cursor-centered zoom via wheel). Took 3 commits to get right because the first 2 missed the SubViewportContainer input-forwarding issue.
 - **Phase 6: Save / Save As + Load** — write spec to JSON. You'll want Load within one session of Save.
-- **Editor return path** — currently no way back to the main menu. Esc → confirm dialog.
+- ~~**Editor return path** — currently no way back to the main menu. Esc → confirm dialog.~~ **Done 2026-07-07** — Esc in the editor changes scene to main_menu.tscn directly (no confirmation dialog; user is expected to Save before Esc since the editor doesn't track unsaved changes yet).
+- **Section 4 cleanup** — `.uid` policy decision (still pending; `.uid` rename done — see below).
 
 ### 3. Game-side polish (independent of editor)
 - **Multi-astronaut rescue** — 2-3 levels where one trip isn't enough
@@ -390,8 +391,8 @@ c2462aa chore: standardize GDScript to tabs, add ## tooltips and function docstr
 
 ### 4. Cleanup (cheap)
 - ~~Delete `scenes/level_01.tscn` — stale, untracked, unreferenced (project uses `scenes/level.tscn`; the only references are in `.godot/editor/` metadata which is gitignored)~~ **Done 2026-07-07** (worktree now clean — no untracked files)
-- Decide `.uid` tracking policy — keep tracking vs move to `.gitignore`
-- Rename `PlanetContainer` → `BodyContainer`? Cosmetic; holds planets + asteroids
+- ~~Decide `.uid` tracking policy — keep tracking vs move to `.gitignore`~~ **Done 2026-07-07** — keep tracking. `.uid` files added when scripts are authored; no churn observed across all 42+ recent commits.
+- ~~Rename `PlanetContainer` → `BodyContainer`? Cosmetic; holds planets + asteroids~~ **Done 2026-07-07** — node renamed across `scenes/level.tscn`, `scripts/level_loader.gd`, `tools/level_editor/level_editor.gd`; matches the container's actual role (planets + asteroids, with moons living inside their host planets).
 
 ### 5. Game polish backlog (longer-term, your call)
 - More levels (currently 3; need rising-difficulty progression)
@@ -407,7 +408,7 @@ Multiple rocket types, difficulty modes, achievements, leaderboards, Steam relea
 ## Working Notes
 
 - **Project root:** `rocketman/astrorescue-main/rocketman/`
-- **Git:** 24 commits ahead of origin/main, working tree dirty: untracked `scenes/level_01.tscn` (stale, see Cleanup #4). Not pushed (testing first).
+- **Git:** 43 commits ahead of origin/main (after the Phase 4 editor + return-path + BodyContainer rename cleanup batch). Working tree has uncommitted cleanup (`scenes/level_01.tscn` gitignore + editor return path + BodyContainer rename). Not pushed (testing first).
 - **Init-order lesson (now repeated across multiple scripts):** Whenever a script attaches to a scene where a sibling or cousin populates a group / sets `@export`s later, defer or lazy-init. Three flavors seen across the refactor and body-type expansion:
   - `add_child` first, then call a method that reads now-set `@export`s — `1302eb9` (`apply_visual` + `spawn_dynamic_children`), reused in `700a40b` for moon + asteroid.
   - Lazy retry in `_process` until the resource appears — `7931e51` (`sun = _find_sun()`) and `c3e4541` (the "same pattern" trajectory-side note).

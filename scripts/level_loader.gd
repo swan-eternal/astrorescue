@@ -85,7 +85,7 @@ func _load_level() -> void:
 		return
 
 	# Build the scene from the loaded JSON. Pass `get_parent()` (the
-	# level node) as root — it has SunContainer + PlanetContainer as
+	# level node) as root — it has SunContainer + BodyContainer as
 	# direct children, matching what build_scene_from_spec expects.
 	build_scene_from_spec(data, get_parent())
 
@@ -94,27 +94,31 @@ func _load_level() -> void:
 ## **Public + static** so the upcoming level editor can call it with
 ## an in-memory spec without instantiating a LevelLoader node.
 ##
-## `root` should have `SunContainer` and `PlanetContainer` as direct
+## `root` should have `SunContainer` and `BodyContainer` as direct
 ## children (matches `scenes/level.tscn`). Existing bodies in those
 ## containers are cleared first — calling this twice replaces the
 ## level cleanly (used for live preview in the editor).
+##
+## BodyContainer holds planets AND asteroids (moons are now children
+## of their host planets, not siblings in the container). Renamed
+## from the historical "PlanetContainer" to match its actual role.
 ##
 ## The rocket (in the `"player"` group) is configured from
 ## `spec.get("rocket", {})` if found. The editor can call
 ## `configure_rocket()` directly when it has a specific rocket instance.
 static func build_scene_from_spec(spec: Dictionary, root: Node) -> void:
 	var sun_container: Node = root.get_node_or_null("SunContainer")
-	var planet_container: Node = root.get_node_or_null("PlanetContainer")
+	var body_container: Node = root.get_node_or_null("BodyContainer")
 
-	if sun_container == null or planet_container == null:
-		push_error("LevelLoader.build_scene_from_spec: root must have SunContainer + PlanetContainer children")
+	if sun_container == null or body_container == null:
+		push_error("LevelLoader.build_scene_from_spec: root must have SunContainer + BodyContainer children")
 		return
 
 	# Clear existing bodies (idempotent re-build — editor calls this
 	# on every property change for live preview).
 	for child in sun_container.get_children():
 		child.queue_free()
-	for child in planet_container.get_children():
+	for child in body_container.get_children():
 		child.queue_free()
 
 	# Instantiate each body in the spec. Order matters: the sun must
@@ -126,9 +130,9 @@ static func build_scene_from_spec(spec: Dictionary, root: Node) -> void:
 			"sun":
 				_instantiate_sun(body_spec, sun_container)
 			"planet":
-				_instantiate_planet(body_spec, planet_container)
+				_instantiate_planet(body_spec, body_container)
 			"asteroid":
-				_instantiate_asteroid(body_spec, planet_container)
+				_instantiate_asteroid(body_spec, body_container)
 			_:
 				push_warning("LevelLoader: unknown body type '%s' (skipped)" % body_type)
 
@@ -265,6 +269,9 @@ static func _instantiate_planet(spec: Dictionary, container: Node) -> void:
 ## PlanetContainer alongside them, and used a `host_planet_name` string
 ## lookup to find their host. The body_label lookup bug (commit
 ## `68bb4ba`) is gone with the new architecture.
+
+Note: "PlanetContainer" was renamed to "BodyContainer" in 2026-07-07
+when the container's actual role expanded to hold asteroids too.
 static func _instantiate_planet_moon(planet: Node2D, spec: Dictionary) -> void:
 	var moon := MOON_SCENE.instantiate()
 	planet.add_child(moon)
