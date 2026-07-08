@@ -23,7 +23,12 @@ class_name LevelEditor
 ## Moons are edited inline in the planet's inspector (since the
 ## top-level list only shows top-level bodies).
 ##
-## Save / Test Level remain stubs (Phase 6).
+## Save / Test Level wired (Phase 6 MVP). Sun is always present and
+## non-removable (auto-injected in _ready if missing; _on_remove_selected
+## refuses to delete it; the Sun button was dropped from the add grid).
+## Matches the physics invariant — orbit math treats origin as the sun,
+## and a non-zero visual position would just float the disk while
+## planets still orbit (0, 0).
 ##
 ## Data flow:
 ##   UI mutates `spec` (in-memory Dictionary mirroring v3 JSON schema)
@@ -51,12 +56,13 @@ var spec: Dictionary = {
 }
 
 
-# --- FileDialog for save (built in code, popped up on Save click) ---
-# Modal save dialog: blocks input until the user picks a path or cancels,
-# then returns to the editor. Filters to *.json so the suggested
-# extension matches the v3 JSON schema. Opens in user://levels/
-# (lazily created on first save by _on_save).
+# --- FileDialogs for save + load (built in code, popped up on click) ---
+# Both modal: block input until the user picks a path or cancels, then
+# return to the editor. Filters to *.json so the suggested extension
+# matches the v3 JSON schema. Both open in user://levels/ (lazily
+# created on first save by _on_save).
 var _save_dialog: FileDialog
+var _load_dialog: FileDialog
 
 
 # --- UI references (created in _ready) ---
@@ -83,8 +89,13 @@ const MAX_ZOOM: float = 1.0
 const ZOOM_STEP: float = 1.2
 
 
-## Build the UI, then render the initial (empty) viewport.
+## Build the UI, ensure the sun invariant, then render the viewport.
+## The sun is always present (auto-injected if missing) and is locked
+## against removal — matches the physics invariant (orbit math treats
+## origin as the sun) and removes the "two suns" failure mode.
 func _ready() -> void:
+	if not _has_sun():
+		spec.bodies.insert(0, _make_default_sun_spec())
 	_build_ui()
 	_refresh_viewport()
 
@@ -130,11 +141,13 @@ func _build_sidebar(parent: Container) -> void:
 
 	sidebar.add_child(HSeparator.new())
 
-	# Add buttons in a 2x2 grid so all four body types fit at 280px wide.
+	# Add buttons in a 1x3 grid (Planet / Moon / Asteroid). No "Add
+	# Sun" — sun is always present (auto-injected in _ready if the
+	# spec didn't have one) and non-removable (refused by
+	# _on_remove_selected). Matches the physics invariant.
 	var add_grid := GridContainer.new()
-	add_grid.columns = 2
+	add_grid.columns = 3
 	sidebar.add_child(add_grid)
-	add_grid.add_child(_make_button("Sun", _on_add_sun))
 	add_grid.add_child(_make_button("Planet", _on_add_planet))
 	add_grid.add_child(_make_button("Moon", _on_add_moon))
 	add_grid.add_child(_make_button("Asteroid", _on_add_asteroid))
@@ -195,14 +208,29 @@ func _build_viewport(parent: Container) -> void:
 	_camera = camera  # save reference for input handlers
 
 
-## Bottom bar: Save (path picker) / Test Level.
+## Bottom bar: Load (path picker) / Save (path picker) / Test Level.
 func _build_action_bar(parent: Container) -> void:
 	var bar := HBoxContainer.new()
 	parent.add_child(bar)
 
+	bar.add_child(_make_button("Load", _on_load))
 	bar.add_child(_make_button("Save", _on_save))
 	bar.add_child(_make_button("Test Level", _on_test_level))
 	_build_save_dialog()
+	_build_load_dialog()
+
+
+## Build the FileDialog used by Load. Open mode (vs Save's save mode),
+## otherwise structurally identical to _build_save_dialog.
+func _build_load_dialog() -> void:
+	var dialog := FileDialog.new()
+	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dialog.access = FileDialog.ACCESS_USERDATA
+	dialog.current_dir = "user://levels"
+	dialog.filters = PackedStringArray(["*.json ; JSON level spec"])
+	dialog.file_selected.connect(_on_load_dialog_file_selected)
+	add_child(dialog)
+	_load_dialog = dialog
 
 
 ## Build the FileDialog used by Save. Popped up on click; the dialog's
@@ -263,7 +291,10 @@ func _body_label_for(body: Dictionary, index: int) -> String:
 	var name: String = body.get("name", "")
 	match type:
 		"sun":
-			return "Sun (mass %.0f)" % float(body.get("mass", 0))
+			# Sun is locked (always present, non-removable). Surface
+			# that in the label so the user has a hint when Remove is
+			# a no-op on the selected sun.
+			return "Sun (locked, mass %.0f)" % float(body.get("mass", 0))
 		"planet":
 			var moons_count: int = body.get("moons", []).size()
 			var moons_suffix: String = ""
@@ -635,19 +666,8 @@ func _add_add_moon_button(planet_body: Dictionary) -> void:
 
 
 # --- Add / Remove handlers ---
-
-func _on_add_sun() -> void:
-	# One sun per level. Warn if one exists rather than creating a
-	# second (the existing sun's properties can be edited once the
-	# Phase 4 inspector is in).
-	for body in spec.bodies:
-		if body.get("type") == "sun":
-			_inspector_placeholder_warn("Sun already exists. Edit the existing sun's properties.")
-			return
-	spec.bodies.append(_make_default_sun_spec())
-	_refresh_body_list()
-	_refresh_viewport()
-	_select_last_body()
+# Sun has no add handler — it's auto-injected in _ready if missing
+# and locked against removal. See _on_remove_selected for the refusal.
 
 
 func _on_add_planet() -> void:
@@ -682,6 +702,10 @@ func _on_add_asteroid() -> void:
 	_select_last_body()
 
 
+## Remove the selected body. Refuses to remove the sun — orbit math
+## treats origin as the sun, and the editor enforces the "exactly one
+## sun per level" invariant (auto-injected in _ready if missing). The
+## body_label_for text mentions "locked" so the user has a hint.
 func _on_remove_selected() -> void:
 	var selected := _body_list.get_selected_items()
 	if selected.is_empty():
@@ -689,6 +713,8 @@ func _on_remove_selected() -> void:
 	var i: int = selected[0]
 	if i >= spec.bodies.size():
 		return
+	if spec.bodies[i].get("type") == "sun":
+		return  # locked — see docstring
 	spec.bodies.remove_at(i)
 	_refresh_body_list()
 	_refresh_viewport()
@@ -908,10 +934,12 @@ func _make_default_asteroid_spec() -> Dictionary:
 	}
 
 
-# --- Save / Test Level (Phase 6) ---
+# --- Save / Load / Test Level (Phase 6) ---
 # Save opens a FileDialog (built in _build_save_dialog) so the user
 # picks the path/name. No "Save As" — with no per-edit tracked path
 # the distinction didn't add value (Jason's feedback after 38ee7ee).
+# Load opens a FileDialog in OPEN_FILE mode, parses the JSON, replaces
+# the in-memory spec, and refreshes the body list / viewport / inspector.
 # Test Level pushes the in-memory spec into SaveState.test_spec and
 # changes scene to level.tscn — the loader checks that field before
 # JSON and uses the editor's spec as the source of truth.
@@ -942,6 +970,61 @@ func _on_save_dialog_file_selected(path: String) -> void:
 	file.store_string(JSON.stringify(spec, "  "))
 	file.close()
 	print("LevelEditor: saved to %s" % path)
+
+
+## Load click: open the file-picker dialog.
+func _on_load() -> void:
+	if not DirAccess.dir_exists_absolute("user://levels"):
+		DirAccess.make_dir_recursive_absolute("user://levels")
+	_load_dialog.popup_centered_ratio(0.6)
+
+
+## FileDialog callback: read+parse the chosen file, replace the
+## in-memory spec, and refresh. Rejects files with the wrong schema
+## version (only v3 supported). Auto-injects a sun if the file didn't
+## have one (forgiving — matches the editor's invariant).
+##
+## Replacing spec mid-session means any SpinBox in the inspector that
+## held a closure-captured reference to an OLD body dict now points
+## at a stale dict. _refresh_body_list handles this by re-selecting
+## (which triggers _rebuild_inspector with the NEW spec's body), and
+## the explicit empty-inspector check below handles the case where
+## the new spec has fewer bodies than the old one (selection lost).
+func _on_load_dialog_file_selected(path: String) -> void:
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_error("LevelEditor: failed to open %s (err %d)" % [path, FileAccess.get_open_error()])
+		return
+	var json_text := file.get_as_text()
+	file.close()
+	var data: Variant = JSON.parse_string(json_text)
+	if not data is Dictionary:
+		push_error("LevelEditor: failed to parse JSON in %s" % path)
+		return
+	var version: int = (data as Dictionary).get("version", 0)
+	if version != 3:
+		push_error("LevelEditor: unsupported schema version %d in %s (expected 3)" % [version, path])
+		return
+	spec = data
+	if not _has_sun():
+		spec.bodies.insert(0, _make_default_sun_spec())
+	_refresh_body_list()
+	# If the old selection is now out of bounds for the new spec, the
+	# inspector keeps showing stale content. Clear it explicitly.
+	if _body_list.get_selected_items().is_empty():
+		_rebuild_inspector_empty()
+	_refresh_viewport()
+	print("LevelEditor: loaded %s" % path)
+
+
+## Helper: does the current spec contain at least one sun? Used by
+## _ready and _on_load_dialog_file_selected to enforce the invariant
+## that every level has exactly one sun.
+func _has_sun() -> bool:
+	for body in spec.bodies:
+		if body.get("type") == "sun":
+			return true
+	return false
 
 
 ## "Play what I just made" — push the editor's spec into SaveState
