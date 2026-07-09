@@ -40,10 +40,19 @@ func _build_ui() -> void:
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(root)
 
+	# CenterContainer centers the panel and respects its
+	# custom_minimum_size. Replaces PRESET_CENTER which anchored at
+	# 0.5/0.5/0.5/0.5 but kept offsets at 0/0/0/0 because the
+	# Control had zero size when the preset was applied — panel
+	# rendered at origin instead of center.
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(center)
+
 	_panel = PanelContainer.new()
 	_panel.custom_minimum_size = Vector2(280, 0)
-	_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	root.add_child(_panel)
+	center.add_child(_panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 16)

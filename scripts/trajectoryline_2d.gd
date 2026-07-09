@@ -4,8 +4,11 @@ extends Line2D
 ##
 ## - ELLIPSE: closed-form orbital prediction. Auto-switches to the nearest
 ##   planet's orbit when the rocket is inside its SOI (Hill sphere ×
-##   soi_fraction); otherwise shows the heliocentric sun orbit. No
-##   integration, no jitter — exact at any time scale.
+##   soi_fraction); otherwise shows the heliocentric sun orbit. When the
+##   rocket is on an escape trajectory (specific orbital energy ≥ 0),
+##   shows the forward-direction leg of the analytical hyperbola in
+##   `hyperbolic_color` instead of a closed ellipse. No integration,
+##   no jitter — exact at any time scale.
 ## - PROJECTED: forward-simulated trajectory under sun + every planet's
 ##   gravity (planet positions sampled via closed-form math at each step).
 ##   Shows what actually happens with perturbations, slingshots, etc.
@@ -31,13 +34,24 @@ enum Mode { ELLIPSE, PROJECTED }
 ## frame. Closed ellipse (not a fading prediction), so 64-128 is plenty.
 @export var ellipse_segments: int = 128
 
+## World-space length (pixels) of the radial-escape fallback line.
+## The polar-formula sweep no longer uses this clip (terminates at
+## the asymptote), but the radial-escape branch (h = 0, polar formula
+## degenerates) still draws a straight line of this length outward
+## from the focus so the player sees the escape direction.
+@export var max_leg_radius: float = 1500.0
+
 ## SOI = Hill sphere × this fraction. The Hill sphere is the radius at
 ## which the planet's gravity equals the sun's; we use a fraction of it
 ## as the SOI cutoff so the inner half is "definitely orbiting the planet"
 ## and the outer half is transition zone (where the sun starts to dominate).
-## 0.5 is the common default. Used by ELLIPSE mode to auto-switch to
-## the planet orbit when the rocket is in range.
-@export var soi_fraction: float = 0.5
+## Default references `OrbitCalculator.DEFAULT_SOI_FRACTION` so the
+## trajectory-mode auto-switch (here) and the editor's SOI visualization
+## (`soi_indicator.gd`) share one source of truth — if the formula ever
+## changes, `OrbitCalculator.compute_soi_radius` is the single edit point.
+## Used by ELLIPSE mode to auto-switch to the planet orbit when the
+## rocket is in range.
+@export var soi_fraction: float = OrbitCalculator.DEFAULT_SOI_FRACTION
 
 
 # PROJECTED-mode parameters
@@ -66,6 +80,12 @@ enum Mode { ELLIPSE, PROJECTED }
 
 ## PROJECTED mode color (forward-simulated trajectory with all gravity).
 @export var projected_color: Color = Color(0.4, 0.7, 1.0, 0.7)
+
+## ELLIPSE-mode color when the rocket is on an escape trajectory
+## (specific orbital energy ≥ 0). Shown as the analytical forward-
+## direction hyperbola leg (see `_hyperbola_leg`). Distinct from the
+## sun/planet ellipse colors so the player can see they're escaping.
+@export var hyperbolic_color: Color = Color(1.0, 0.65, 0.2, 0.7)
 
 
 # Time markers — small dots showing where the rocket will be at
@@ -257,9 +277,11 @@ func _update() -> void:
 			var m: float = float(body.get("mass"))
 			if m < sun_mass * 0.5:  # planet (much lighter than sun)
 				# Hill sphere: radius at which the planet's gravity equals the sun's.
+				# Math lives in `OrbitCalculator.compute_soi_radius` — single source
+				# of truth shared with `soi_indicator.gd`.
 				var orbital_distance: float = body.global_position.distance_to(sun.global_position)
-				var hill: float = orbital_distance * pow(m / (3.0 * sun_mass), 1.0 / 3.0)
-				var soi: float = hill * soi_fraction
+				var soi: float = OrbitCalculator.compute_soi_radius(
+					m, sun_mass, orbital_distance, soi_fraction)
 				var d: float = (rocket.global_position - body.global_position).length()
 				if d < soi and d < closest_dist:
 					closest_dist = d
@@ -271,33 +293,38 @@ func _update() -> void:
 			# orbit; otherwise show the heliocentric sun orbit. The user doesn't
 			# need to toggle ORBITAL manually — happens automatically based on
 			# proximity.
+			#
+			# When the trajectory is unbound (epsilon ≥ 0, i.e. escape
+			# velocity or beyond), draw the forward-direction hyperbola leg
+			# in `hyperbolic_color` instead. Closed-form ellipse math has no
+			# answer for an unbound orbit. Hyperbolic color takes priority
+			# over the SOI choice because "you're escaping" is the more
+			# important read for the player.
 			if central_planet != null:
-				default_color = closed_form_planet_color
-				points = _compute_planetocentric_ellipse(central_planet)
+				var planet_pos: Vector2 = central_planet.global_position
+				var planet_vel: Vector2 = Vector2(central_planet.get("velocity"))
+				var r_focus: Vector2 = rocket.global_position - planet_pos
+				var v_focus: Vector2 = rocket.velocity - planet_vel
+				var mu_focus: float = G * float(central_planet.get("mass"))
+				if _is_bound(r_focus, v_focus, mu_focus):
+					default_color = closed_form_planet_color
+					points = _orbit_ellipse(r_focus, v_focus, mu_focus, ellipse_segments, planet_pos)
+				else:
+					default_color = hyperbolic_color
+					points = _hyperbola_leg(r_focus, v_focus, mu_focus, planet_pos)
 			else:
-				default_color = closed_form_sun_color
-				points = _orbit_ellipse(
-					rocket.global_position, rocket.velocity,
-					sun_mass, ellipse_segments, Vector2.ZERO
-				)
+				var r_focus: Vector2 = rocket.global_position
+				var v_focus: Vector2 = rocket.velocity
+				var mu_focus: float = G * sun_mass
+				if _is_bound(r_focus, v_focus, mu_focus):
+					default_color = closed_form_sun_color
+					points = _orbit_ellipse(r_focus, v_focus, mu_focus, ellipse_segments, Vector2.ZERO)
+				else:
+					default_color = hyperbolic_color
+					points = _hyperbola_leg(r_focus, v_focus, mu_focus, Vector2.ZERO)
 		Mode.PROJECTED:
 			default_color = projected_color
 			points = _simulate_projected(attractors)
-
-
-## ORBITAL-mode helper (within ELLIPSE): analytical orbit ellipse around
-## a planet (planetocentric frame). Same math as the sun-orbit ellipse
-## but in the planet's reference frame.
-func _compute_planetocentric_ellipse(planet: Node2D) -> PackedVector2Array:
-	var planet_pos: Vector2 = planet.global_position
-	var planet_vel: Vector2 = Vector2(planet.get("velocity"))
-
-	# Rocket state in planet's reference frame.
-	var r: Vector2 = rocket.global_position - planet_pos
-	var v: Vector2 = rocket.velocity - planet_vel
-
-	var mu: float = G * float(planet.get("mass"))
-	return _orbit_ellipse(r, v, mu, ellipse_segments, planet_pos)
 
 
 ## Convert current (r, v) state to orbital elements (perihelion, aphelion,
@@ -344,18 +371,18 @@ func _compute_elements_from_state(r: Vector2, v: Vector2, mu: float) -> Dictiona
 	}
 
 
-## Compute an analytical orbit ellipse from current position, velocity,
+## Compute the closed orbit ellipse from current position, velocity,
 ## and `mu` (= G × central_mass). Returns a closed loop (first point
-## appended at the end). Falls back to a single point for unbound orbits.
+## appended at the end). Assumes a bound orbit — the caller must
+## gate this call with `_is_bound()` and route unbound cases to
+## `_hyperbola_leg()` instead.
 func _orbit_ellipse(r: Vector2, v: Vector2, mu: float, segs: int, offset: Vector2) -> PackedVector2Array:
 	var dist: float = maxf(r.length(), MIN_DIST)
 	var v_sq: float = v.length_squared()
 
+	# Semi-major axis from vis-viva rearranged. Negative for bound
+	# orbits in the convention used here (so `a*(1-e²)` is positive).
 	var epsilon: float = v_sq / 2.0 - mu / dist
-	if epsilon >= 0.0:
-		return PackedVector2Array([offset + r])  # unbound (hyperbolic) — just show current point
-
-	var h: float = r.x * v.y - r.y * v.x
 	var a: float = -mu / (2.0 * epsilon)
 
 	var e_vec: Vector2 = ((v_sq - mu / dist) * r - r.dot(v) * v) / mu
@@ -369,6 +396,131 @@ func _orbit_ellipse(r: Vector2, v: Vector2, mu: float, segs: int, offset: Vector
 		var r_orbit: float = a * one_minus_e_sq / (1.0 + e * cos(theta - omega))
 		pts.append(offset + Vector2(r_orbit * cos(theta), r_orbit * sin(theta)))
 	pts.append(pts[0])  # close the loop — last sample is at theta = (n-1)/n * TAU, missing the segment back to 0
+	return pts
+
+
+## True when the specific orbital energy `ε = v²/2 − μ/r` is negative,
+## i.e. the rocket is in a closed (bound) orbit around the focus.
+## Used by `_update()` to route between the ellipse path and the
+## hyperbolic escape leg.
+func _is_bound(r: Vector2, v: Vector2, mu: float) -> bool:
+	var dist: float = maxf(r.length(), MIN_DIST)
+	var v_sq: float = v.length_squared()
+	return v_sq / 2.0 - mu / dist < 0.0
+
+
+## Compute the forward-direction leg of a hyperbolic trajectory
+## (escape velocity or beyond). Sweeps from the rocket's current
+## true anomaly toward the forward-going asymptote (the asymptote
+## in the direction of motion). No world-space clip — the leg
+## terminates naturally at the asymptote (denom → 0 in the polar
+## formula), so the player sees the actual analytical trajectory
+## even when it's very long. For shallow hyperbolas (e just above 1)
+## the leg can sweep nearly all the way around the focus and extend
+## far off-screen; the visible portion within the viewport is what
+## matters.
+##
+## Polar form: r(ν) = a(e²−1) / (1 + e·cos(ν)), where ν is the true
+## anomaly (angle from periapsis). Asymptotes occur where the
+## denominator → 0, i.e. ν = ±acos(−1/e). Angular momentum `h`
+## picks the forward-going branch: h > 0 (prograde, CCW) sweeps
+## toward +acos(−1/e), h < 0 (retrograde, CW) sweeps toward
+## −acos(−1/e).
+##
+## Caller is responsible for color selection and for confirming
+## the orbit is unbound. Two degenerate cases route to special
+## paths before the polar sweep:
+##   - ε ≤ 0 (parabolic exactly) → single point.
+##   - e ≤ 1 with ε > 0 (radial unbound) → straight radial line
+##     outward to `max_leg_radius` (the polar formula needs a
+##     defined periapsis direction, which h = 0 trajectories lack).
+func _hyperbola_leg(r: Vector2, v: Vector2, mu: float, offset: Vector2) -> PackedVector2Array:
+	var dist: float = maxf(r.length(), MIN_DIST)
+	var v_sq: float = v.length_squared()
+
+	# Specific orbital energy. ε > 0 here (caller routed via `_is_bound`
+	# false, i.e. `_update` confirmed the orbit is unbound). Used by both
+	# the parabolic early-out and the polar-formula `a` below.
+	var epsilon: float = v_sq / 2.0 - mu / dist
+
+	# Parabolic (ε == 0 exactly) is a measure-zero case the polar
+	# formula can't handle: a → inf AND e²-1 → 0, so r_orbit = inf·0/denom
+	# is indeterminate. Single point at the rocket — matches the legacy
+	# fallback for this edge case.
+	if epsilon <= 0.0:
+		return PackedVector2Array([offset + r])
+
+	# Eccentricity vector (same formula as `_orbit_ellipse`).
+	var e_vec: Vector2 = ((v_sq - mu / dist) * r - r.dot(v) * v) / mu
+	var e: float = e_vec.length()
+	if e <= 1.0:
+		# Radial unbound (ε > 0, e ≈ 1 from the formula): the eccentricity
+		# formula collapses to e = 1 whenever r and v are parallel,
+		# regardless of energy. So this branch catches RADIAL ESCAPES —
+		# orbits that are genuinely hyperbolic but have no defined
+		# periapsis direction (the polar hyperbola formula needs ω, which
+		# is undefined for radial motion). This is what happens when the
+		# player launches off a planet: `rocket.gd` auto-orients the
+		# nose outward, the first thrust goes straight up from the
+		# planet, and the resulting h = 0 trajectory used to disappear
+		# here as a single point. Draw a straight radial line outward
+		# to the focus's max_leg_radius so the player still sees the
+		# escape trajectory even though there's no curvature to show.
+		var unit_r: Vector2 = r / r.length() if r.length() > MIN_DIST else Vector2.RIGHT
+		var radial_end: Vector2 = unit_r * max_leg_radius
+		return PackedVector2Array([offset + r, offset + radial_end])
+
+	# Semi-major axis for hyperbola: POSITIVE (vs. negative for ellipse),
+	# because ε > 0 for unbound orbits.
+	var a: float = mu / (2.0 * epsilon)
+
+	# Asymptote half-angle from periapsis direction. For e > 1,
+	# -1/e ∈ (-1, 0), so acos(-1/e) ∈ (π/2, π).
+	var theta_inf: float = acos(-1.0 / e)
+
+	# Periapsis direction in world coordinates.
+	var omega: float = atan2(e_vec.y, e_vec.x)
+
+	# Current true anomaly: angle from periapsis to current position.
+	# Wrap to [-π, π] for clean comparison with ±theta_inf.
+	var nu: float = atan2(r.y, r.x) - omega
+	while nu > PI:
+		nu -= TAU
+	while nu < -PI:
+		nu += TAU
+
+	# Forward-going sweep direction: CCW (prograde) → +θ_inf,
+	# CW (retrograde) → -θ_inf.
+	var h: float = r.x * v.y - r.y * v.x
+	var sweep_dir: float = 1.0 if h > 0.0 else -1.0
+
+	# Angular distance to sweep (in true anomaly). Clamp to 0 if the
+	# rocket is already at/past the forward asymptote (shouldn't happen
+	# physically — ν of an on-trajectory rocket is bounded by ±θ_inf
+	# — but defensive against float drift and e ~ 1 edge cases).
+	var nu_target: float = sweep_dir * theta_inf
+	var sweep_length: float = nu_target - nu
+	if sweep_dir > 0.0 and sweep_length < 0.0:
+		sweep_length = 0.0
+	elif sweep_dir < 0.0 and sweep_length > 0.0:
+		sweep_length = 0.0
+
+	var pts := PackedVector2Array()
+	pts.append(offset + r)  # always start at the rocket's current position
+	if sweep_length == 0.0:
+		return pts
+
+	var e_sq_minus_1: float = e * e - 1.0
+	for i in range(1, ellipse_segments + 1):
+		var t: float = float(i) / float(ellipse_segments)
+		var theta: float = nu + t * sweep_length
+		var denom: float = 1.0 + e * cos(theta)
+		if denom <= 0.001:
+			# Past the asymptote (r → ∞). Shouldn't happen within the
+			# valid sweep range, but stop if it does.
+			break
+		var r_orbit: float = a * e_sq_minus_1 / denom
+		pts.append(offset + Vector2(r_orbit * cos(omega + theta), r_orbit * sin(omega + theta)))
 	return pts
 
 

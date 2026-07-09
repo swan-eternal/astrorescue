@@ -1,4 +1,5 @@
 extends CanvasLayer
+class_name SettingsMenu
 ##
 ## SettingsMenu: tabbed settings panel (Audio / Visual / Gameplay).
 ## Self-contained: builds its UI in _ready, handles Esc via
@@ -63,11 +64,28 @@ func _build_ui() -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(backdrop)
 
-	# Centered panel with the title + tabs + close button.
+	# CenterContainer centers its single child and respects its
+	# custom_minimum_size for sizing. Replaces the previous
+	# set_anchors_and_offsets_preset(PRESET_CENTER) approach, which
+	# set anchors to 0.5/0.5/0.5/0.5 but kept offsets at 0/0/0/0
+	# because the Control had zero size when the preset was applied
+	# (before being added to the tree). End result: panel anchored
+	# at center, sized to zero, rendered at origin.
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	backdrop.add_child(center)
+
+	# Panel with the title + tabs + close button. Stylebox override
+	# (see _make_panel_stylebox) replaces Godot's default semi-
+	# transparent Panel bg — when opened from the main menu, that
+	# default lets the "PLAY"/"SETTINGS"/"QUIT" buttons bleed through,
+	# which reads as visually messy. Opaque dark here keeps the panel
+	# as a solid modal surface.
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = PANEL_SIZE
-	panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	backdrop.add_child(panel)
+	panel.add_theme_stylebox_override("panel", _make_panel_stylebox())
+	center.add_child(panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 12)
@@ -119,6 +137,29 @@ func _unhandled_input(event: InputEvent) -> void:
 ## sees the settings panel in the tree.
 func _close() -> void:
 	queue_free()
+
+
+## Build a fully-opaque dark stylebox for the panel. Godot's default
+## PanelContainer bg_color is alpha = 0.75 — opening settings over the
+## main menu lets the buttons behind show through, which reads as
+## visually messy. Override is per-instance (add_theme_stylebox_override
+## on this PanelContainer only) rather than mutating the global theme,
+## so any future Panels in the project keep the default look unless
+## they explicitly opt in. The dark color here matches the typical
+## "modal panel" tone used by most UIs — solid enough to read as a
+## distinct surface, not so dark it looks like a hole in the screen.
+func _make_panel_stylebox() -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.12, 0.14, 1.0)
+	sb.corner_radius_top_left = 6
+	sb.corner_radius_top_right = 6
+	sb.corner_radius_bottom_left = 6
+	sb.corner_radius_bottom_right = 6
+	sb.content_margin_left = 12
+	sb.content_margin_right = 12
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 12
+	return sb
 
 
 ## Static accessor used by pause_menu.gd to gate its own Esc handler.

@@ -22,6 +22,17 @@ const G: float = 1.0
 # during a scene reload or teleport).
 const MIN_DIST: float = 1.0
 
+# Default Hill-sphere fraction for Sphere-of-Influence detection. Match
+# the project's existing convention of 0.5 — the inner half of the Hill
+# sphere is "definitely orbiting the body", the outer half is the
+# transition zone where the primary's gravity starts to dominate.
+# Callers (e.g., trajectoryline_2d.gd, soi_indicator.gd) expose this as
+# an @export so the value can be tweaked per-instance; this constant
+# is the default they fall back to. Single source of truth — if we
+# ever change the formula (Laplace SOI, 2-body correction, etc.) it's
+# one edit here instead of N.
+const DEFAULT_SOI_FRACTION: float = 0.5
+
 
 ## Compute position and velocity of a body at time `t` on a closed
 ## elliptical orbit around `central_mass`.
@@ -170,3 +181,32 @@ static func compute_period(
 		Q = temp
 	var a: float = (q + Q) / 2.0
 	return TAU * sqrt(a * a * a / (G * central_mass))
+
+
+## Compute the Sphere-of-Influence radius for a satellite orbiting a
+## much heavier primary. SOI = Hill sphere × `soi_fraction`, where
+## Hill sphere = orbital_distance · (m_satellite / (3·m_primary))^(1/3).
+## The cube-root dependence on mass ratio means even modest-mass
+## satellites get surprisingly large SOIs at this scale of orbits
+## (e.g., a 10000-mass planet at 1900 px from a 4M-mass sun gets a
+## ~200 px SOI with the default 0.5 fraction — about 5× the planet's
+## visual radius).
+##
+## Used by both `trajectoryline_2d.gd` (for SOI-mode auto-switching)
+## and `soi_indicator.gd` (for the editor's SOI visualization). Single
+## source of truth so the visualization always represents the
+## gameplay-relevant region.
+##
+## Returns 0.0 for degenerate inputs (no primary, no distance, or a
+## zero/negative satellite mass). Callers should treat 0 as "no SOI"
+## and skip the body.
+static func compute_soi_radius(
+	planet_mass: float,
+	sun_mass: float,
+	orbital_distance: float,
+	soi_fraction: float = DEFAULT_SOI_FRACTION
+) -> float:
+	if sun_mass <= 0.0 or orbital_distance <= 0.0 or planet_mass <= 0.0:
+		return 0.0
+	var hill: float = orbital_distance * pow(planet_mass / (3.0 * sun_mass), 1.0 / 3.0)
+	return hill * soi_fraction
