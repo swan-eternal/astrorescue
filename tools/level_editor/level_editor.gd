@@ -73,6 +73,13 @@ var _camera: Camera2D  # Phase 5: viewport camera, referenced for pan/zoom input
 var _viewport_container: SubViewportContainer  # Phase 5: needed for container-relative screen math (zoom-at-cursor, etc.)
 
 
+# Script for the SOI visualization overlay. Preloaded once at script
+# load so each `_build_viewport` call (rare — only on first build)
+# doesn't pay a fresh FileAccess lookup. The instance is added to
+# `_viewport_root` BEFORE `SunContainer` so it renders behind bodies.
+const SOI_INDICATOR_SCRIPT := preload("res://scripts/soi_indicator.gd")
+
+
 # --- Phase 5 viewport control state + tunables ---
 # Middle-click drag (or Space+left-drag) pans; scroll wheel zooms. State
 # persists between drags so subsequent drags start from the last camera
@@ -234,6 +241,22 @@ func _build_viewport(parent: Container) -> void:
 
 	_viewport_root = Node2D.new()
 	sub_viewport.add_child(_viewport_root)
+
+	# SOI visualization overlay — added BEFORE SunContainer so it renders
+	# behind bodies. Persists across `_refresh_viewport()` calls because
+	# `LevelLoader.build_scene_from_spec` only clears SunContainer +
+	# BodyContainer children, not other root children. One node draws
+	# SOIs for all planets each frame; mass tweaks in the inspector
+	# update the visualization on the next frame.
+	#
+	# `bypass_visual_settings = true` because the editor is a planning
+	# aid — the SOI should always be visible here regardless of the
+	# user's in-game setting (which lives on the level.tscn instance
+	# and respects the toggle normally).
+	var soi_indicator: Node2D = SOI_INDICATOR_SCRIPT.new()
+	soi_indicator.name = "SoiIndicator"
+	soi_indicator.bypass_visual_settings = true
+	_viewport_root.add_child(soi_indicator)
 
 	var sun_container := Node2D.new()
 	sun_container.name = "SunContainer"

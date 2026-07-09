@@ -6,11 +6,15 @@
 [ext_resource type="Script" uid="uid://cqatk6q3c3jym" path="res://scripts/rocket_camera.gd" id="4_rcam"]
 [ext_resource type="Script" path="res://scripts/level_loader.gd" id="5_loader"]
 [ext_resource type="Script" path="res://scripts/pause_menu.gd" id="6_pause"]
+[ext_resource type="Script" path="res://scripts/soi_indicator.gd" id="7_soi"]
 
 [node name="level" type="Node2D"]
 
 [node name="LevelController" type="Node" parent="."]
 script = ExtResource("1_lctrl")
+
+[node name="SoiIndicator" type="Node2D" parent="."]
+script = ExtResource("7_soi")
 
 [node name="SunContainer" type="Node2D" parent="."]
 

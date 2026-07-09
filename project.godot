@@ -24,6 +24,7 @@ buses/default_bus_layout="res://default_bus_layout.tres"
 SaveState="*res://scripts/save_state.gd"
 AudioManager="*res://scripts/audio_manager.gd"
 AudioSettings="*res://scripts/audio_settings.gd"
+VisualSettings="*res://scripts/visual_settings.gd"
 
 [display]
 
