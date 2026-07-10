@@ -146,10 +146,12 @@ var picked_up_count: int = 0
 # --- Time warp ---
 
 # Discrete time-warp levels. Press > / < to step through them; index
-# 0 = 1× (real-time), max = 8×. Engine.time_scale drives the global
+# 0 = 1× (real-time), max = 32×. Engine.time_scale drives the global
 # sim rate — physics, _process, etc. all run faster, and delta scales
-# with it, so fuel burn at 8× is 8× per thrust tick.
-const TIME_WARP_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0, 16.0]
+# with it, so fuel burn at 32× is 32× per thrust tick. 32× added 2026-07-09
+# because 16× wasn't fast enough for far-out orbits (waiting on
+# periapsis at 9000 px takes too long at 16×).
+const TIME_WARP_LEVELS: Array[float] = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
 
 # Current index into TIME_WARP_LEVELS.
 var time_warp_index: int = 0

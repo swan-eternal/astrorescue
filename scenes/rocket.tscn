@@ -6,6 +6,7 @@
 [node name="rocket" type="Node2D" unique_id=2124542469]
 script = ExtResource("1_3341w")
 min_visual_scale = 1.0
+thrust_acceleration = 200.0
 
 [node name="Polygon2D" type="Polygon2D" parent="." unique_id=996802943]
 
