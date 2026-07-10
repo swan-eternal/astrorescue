@@ -14,3 +14,10 @@
 # list (see .godot/editor/editor_layout.cfg). The file is harmless on
 # disk; this entry just keeps `git status` clean.
 scenes/level_01.tscn
+
+# Project planning + build notes (Astro-Rescue.md, Astro-RescueV2.md,
+# future V3, etc.) — working documents authored during development
+# (architecture, lessons learned, release checklists) rather than
+# game-content shipped with the binary. Keep them on disk for the
+# developer, but don't track or release them.
+Astro-Rescue*.md
