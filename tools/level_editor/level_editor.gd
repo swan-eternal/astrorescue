@@ -109,11 +109,11 @@ const ZOOM_STEP: float = 1.2
 # no meaningful tuning there.
 
 # Sun (always present, single per level — high mass range, IS the gravity source)
-const SUN_MASS := Vector3(0.0, 1e8, 1000.0)
+const SUN_MASS := Vector3(0.0, 1e7, 1000.0)
 const SUN_RADIUS := Vector3(1.0, 1000.0, 1.0)
 
 # Planet (main orbit range)
-const PLANET_MASS := Vector3(0.0, 1e7, 100.0)
+const PLANET_MASS := Vector3(0.0, 1e6, 100.0)
 const PLANET_RADIUS := Vector3(1.0, 500.0, 1.0)
 
 # Asteroid (small inner-system bodies)
@@ -125,8 +125,8 @@ const MOON_MASS := Vector3(0.0, 1e5, 1.0)
 const MOON_RADIUS := Vector3(1.0, 100.0, 1.0)
 
 # Orbital distance (perihelion / aphelion)
-const ORBIT_DISTANCE := Vector3(0.0, 10000.0, 10.0)  # planet + asteroid
-const MOON_ORBIT_DISTANCE := Vector3(0.0, 200.0, 1.0)  # moon (surface-relative)
+const ORBIT_DISTANCE := Vector3(0.0, 50000.0, 10.0)  # planet + asteroid
+const MOON_ORBIT_DISTANCE := Vector3(0.0, 2000.0, 1.0)  # moon (surface-relative)
 
 # Fuel pickup angular speed (radians/second, negative = retrograde).
 # This is the speed of the FUEL PICKUP orbiting its host at
@@ -485,7 +485,9 @@ func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
 ## entry. Both edit the same value bidirectionally — set_block_signals during
 ## sync prevents the other control's value_changed from re-firing our handler.
 ## Layout: label on top, slider + SpinBox in their own HBox below — slider
-## takes the full sidebar width (~260px), SpinBox fixed at 80px on the right.
+## takes the full sidebar width (~170px), SpinBox fixed at 110px on the right
+## (room for ~10 digits — sun mass 1e8 has 9; smaller fields show trailing
+## padding). The degrees variant stays at 80px since angles only span -180..180.
 ## Stacked layout costs ~2× vertical space per field but ScrollContainer
 ## (set up in _build_sidebar) handles the overflow. Use for any "feel"
 ## numeric (radius, mass, orbital distance, fuel_*). For boolean/color/string/
@@ -511,7 +513,7 @@ func _add_slider_with_input_field(label_text: String, body: Dictionary, key: Str
 	sb.max_value = max_v
 	sb.step = step
 	sb.value = initial_value
-	sb.custom_minimum_size = Vector2(80, 0)
+	sb.custom_minimum_size = Vector2(110, 0)
 	sb.value_changed.connect(func(v: float):
 		body[key] = v
 		slider.set_block_signals(true)
