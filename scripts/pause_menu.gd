@@ -13,8 +13,14 @@ extends CanvasLayer
 const MAIN_MENU_SCENE := "res://scenes/main_menu.tscn"
 const SETTINGS_MENU_SCENE := "res://scenes/settings_menu.tscn"
 
-# Cached so we can show/hide the panel without rebuilding it.
-var _panel: PanelContainer
+# Cached backdrop root. Toggling _root.visible hides/shows the
+# entire pause-menu UI subtree (panel + buttons) without rebuilding
+# it. CRITICAL: must stay hidden during gameplay, otherwise the
+# backdrop's mouse_filter = STOP eats mouse-button events and they
+# never reach other nodes' _unhandled_input (see MEMORY.md lesson
+# "MOUSE_FILTER_STOP silently consumes pointer events" — same
+# symptom shape as the level-editor pan bug from 325619e).
+var _root: Control
 
 
 func _ready() -> void:
@@ -24,7 +30,7 @@ func _ready() -> void:
 	# Draw above the HUD (which sits at default layer 1).
 	layer = 100
 	_build_ui()
-	_panel.visible = false
+	_root.visible = false
 
 
 ## Build the pause panel: "Paused" label + Continue / Main Menu
@@ -36,8 +42,10 @@ func _build_ui() -> void:
 	# Eat mouse input over the backdrop so a stray click while paused
 	# doesn't fall through to anything behind us. (Setting to STOP on
 	# a full-rect Control above the gameplay is the standard way to
-	# dim/lock the screen during a modal.)
+	# dim/lock the screen during a modal.) Stays harmless during
+	# gameplay because _root.visible = false hides the whole subtree.
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	_root = root
 	add_child(root)
 
 	# CenterContainer centers the panel and respects its
@@ -50,13 +58,13 @@ func _build_ui() -> void:
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(center)
 
-	_panel = PanelContainer.new()
-	_panel.custom_minimum_size = Vector2(280, 0)
-	center.add_child(_panel)
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(280, 0)
+	center.add_child(panel)
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 16)
-	_panel.add_child(vbox)
+	panel.add_child(vbox)
 
 	var title := Label.new()
 	title.text = "Paused"
@@ -102,14 +110,14 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Show the panel and pause the game tree.
 func _open_pause() -> void:
-	_panel.visible = true
+	_root.visible = true
 	get_tree().paused = true
 
 
 ## Hide the panel and resume the game tree. Called by both the
 ## Continue button and the Esc-while-paused path.
 func _on_continue_pressed() -> void:
-	_panel.visible = false
+	_root.visible = false
 	get_tree().paused = false
 
 
@@ -126,7 +134,7 @@ func _on_main_menu_pressed() -> void:
 ## triggers _on_settings_closed and the pause panel reappears. Game
 ## stays paused throughout — the player is just adjusting settings.
 func _on_settings_pressed() -> void:
-	_panel.visible = false
+	_root.visible = false
 	var settings: CanvasLayer = load(SETTINGS_MENU_SCENE).instantiate()
 	settings.tree_exited.connect(_on_settings_closed)
 	add_child(settings)
@@ -136,4 +144,4 @@ func _on_settings_pressed() -> void:
 ## the pause panel so the player can resume or quit. Game remains
 ## paused the whole time.
 func _on_settings_closed() -> void:
-	_panel.visible = true
+	_root.visible = true
