@@ -233,6 +233,7 @@ func _snap_to_home_planet() -> void:
 ## state glue, landing/crash detection, normal flight integration,
 ## and fuel-pickup collection. Order matters — see comments inline.
 func _physics_process(delta: float) -> void:
+
 	# Time warp input. Handled at the top so it works regardless of
 	# crashed/landed state.
 	if Input.is_action_just_pressed("time_warp_up"):
