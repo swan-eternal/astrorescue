@@ -15,7 +15,7 @@ extends Node2D
 ## Higher values = stronger pull on planets and rocket. Changes in the
 ## inspector take effect immediately — every consumer reads this via
 ## `sun.get("mass")` each frame, no restart needed.
-@export var mass: float = 4_000_000.0
+@export var mass: float = 3_000_000.0
 
 ## Collision radius in world units. Single source of truth for both
 ## the rocket's contact check (read by `rocket.gd::_physics_process`)

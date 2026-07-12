@@ -30,7 +30,7 @@ extends Node2D
 ## this up if the rocket is still hard to spot at extreme zoom-out.
 ## Visual only — physics size, collision radius, and trajectory math
 ## all use the underlying `size` directly (unchanged).
-@export var min_visual_scale: float = 1.5
+@export var min_visual_scale: float = 1.75
 
 # --- Initial conditions ---
 
@@ -58,23 +58,23 @@ extends Node2D
 
 ## Thrust acceleration when W/Up is held, along the rocket's nose.
 ## In units per second².
-@export var thrust_acceleration: float = 80.0
+@export var thrust_acceleration: float = 60.0
 
 # --- Collision (skill §3.1: distance-based, not Area2D signals) ---
 
 ## Maximum relative speed for a contact to count as "soft" (else crash).
 ## At rel_speed ≤ this on contact, the rocket sticks; > this, it crashes.
-@export var landing_speed_threshold: float = 80.0
+@export var landing_speed_threshold: float = 60.0
 
 ## Extra distance past the visual contact point at which the landing
 ## trigger fires. Small overshoot so the rocket doesn't appear to
 ## "land floating" right at the visual edge.
-@export var landing_buffer: float = 1.0
+@export var landing_buffer: float = 0.5
 
 ## Minimum relative speed for a contact to count as a crash. Anything
 ## in the gap (landing_speed_threshold, crash_speed_threshold) lands
 ## as a crash because it's too fast to be safe.
-@export var crash_speed_threshold: float = 150.0
+@export var crash_speed_threshold: float = 80.0
 
 # --- Astronaut pickup ---
 
@@ -88,7 +88,7 @@ extends Node2D
 ## Fuel burned per second of thrust. At time warp 8×, this becomes
 ## effectively 8× per real second (delta scales with Engine.time_scale).
 ## Dial down to ~0.5 for unconstrained testing, ~5 for normal play.
-@export var fuel_consumption_rate: float = 5.0
+@export var fuel_consumption_rate: float = 7.5
 
 ## Fuel restored per pickup, capped at max_fuel.
 @export var fuel_pickup_amount: float = 50.0

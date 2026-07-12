@@ -58,7 +58,7 @@ enum Mode { ELLIPSE, PROJECTED }
 
 ## Number of simulation steps for PROJECTED-mode forward sim.
 ## Higher = longer predicted path but more compute per frame.
-@export var projected_steps: int = 300
+@export var projected_steps: int = 1000
 
 ## Time step (seconds) per PROJECTED-mode simulation step. The total
 ## predicted time is projected_steps * projected_step_dt (default: 15s).
@@ -69,7 +69,7 @@ enum Mode { ELLIPSE, PROJECTED }
 
 ## Width of the trajectory line (in pixels). Scales inversely with
 ## camera zoom so the line stays readable at any zoom level.
-@export var line_width: float = 2.0
+@export var line_width: float = 3.0
 
 ## ELLIPSE mode color when showing the heliocentric sun orbit.
 @export var closed_form_sun_color: Color = Color(1.0, 0.5, 0.5, 0.7)
@@ -100,7 +100,7 @@ enum Mode { ELLIPSE, PROJECTED }
 
 ## Time interval (seconds) between consecutive orbit markers.
 ## Smaller = more markers, denser visual.
-@export var time_marker_interval: float = 5.0
+@export var time_marker_interval: float = 10.0
 
 ## Radius (pixels) of each marker dot.
 @export var time_marker_radius: float = 2.5

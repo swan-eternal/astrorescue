@@ -109,24 +109,24 @@ const ZOOM_STEP: float = 1.2
 # no meaningful tuning there.
 
 # Sun (always present, single per level — high mass range, IS the gravity source)
-const SUN_MASS := Vector3(0.0, 1e7, 1000.0)
-const SUN_RADIUS := Vector3(1.0, 1000.0, 1.0)
+const SUN_MASS := Vector3(1e6, 1e7, 1000.0)
+const SUN_RADIUS := Vector3(100.0, 1000.0, 1.0)
 
 # Planet (main orbit range)
-const PLANET_MASS := Vector3(0.0, 1e6, 100.0)
-const PLANET_RADIUS := Vector3(1.0, 500.0, 1.0)
+const PLANET_MASS := Vector3(1000.0, 1e6, 100.0)
+const PLANET_RADIUS := Vector3(100.0, 500.0, 1.0)
 
 # Asteroid (small inner-system bodies)
 const ASTEROID_MASS := Vector3(0.0, 1e5, 1.0)
 const ASTEROID_RADIUS := Vector3(1.0, 200.0, 1.0)
 
 # Moon (surface-relative to host planet — smaller distances)
-const MOON_MASS := Vector3(0.0, 1e5, 1.0)
-const MOON_RADIUS := Vector3(1.0, 100.0, 1.0)
+const MOON_MASS := Vector3(500.0, 1e5, 1.0)
+const MOON_RADIUS := Vector3(10.0, 200.0, 1.0)
 
 # Orbital distance (perihelion / aphelion)
-const ORBIT_DISTANCE := Vector3(0.0, 50000.0, 10.0)  # planet + asteroid
-const MOON_ORBIT_DISTANCE := Vector3(0.0, 2000.0, 1.0)  # moon (surface-relative)
+const ORBIT_DISTANCE := Vector3(1000.0, 50000.0, 10.0)  # planet + asteroid
+const MOON_ORBIT_DISTANCE := Vector3(10.0, 2000.0, 1.0)  # moon (surface-relative)
 
 # Fuel pickup angular speed (radians/second, negative = retrograde).
 # This is the speed of the FUEL PICKUP orbiting its host at
@@ -138,8 +138,8 @@ const MOON_ORBIT_DISTANCE := Vector3(0.0, 2000.0, 1.0)  # moon (surface-relative
 const FUEL_ORBIT_SPEED := Vector3(-10.0, 10.0, 0.01)
 
 # Fuel orbit radius (around host planet for fuel pickup)
-const FUEL_ORBIT_RADIUS := Vector3(0.0, 500.0, 1.0)  # planet + asteroid
-const MOON_FUEL_ORBIT_RADIUS := Vector3(0.0, 200.0, 1.0)  # moon
+const FUEL_ORBIT_RADIUS := Vector3(5.0, 500.0, 1.0)  # planet + asteroid
+const MOON_FUEL_ORBIT_RADIUS := Vector3(5.0, 200.0, 1.0)  # moon
 
 
 ## Build the UI, ensure the sun invariant, then render the viewport.
@@ -1100,8 +1100,8 @@ func _zoom_at_screen_pos(screen_pos: Vector2, factor: float) -> void:
 func _make_default_sun_spec() -> Dictionary:
 	return {
 		"type": "sun",
-		"mass": 4_000_000.0,
-		"radius": 200.0,
+		"mass": 3_000_000.0,
+		"radius": 600.0,
 		"is_landable": false,
 		"position": [0.0, 0.0],  # visual only — orbital math uses origin
 	}
@@ -1121,9 +1121,9 @@ func _make_default_planet_spec() -> Dictionary:
 		"is_home": false,
 		"has_astronaut": false,
 		"has_fuel": false,
-		"lock_circular": false,
-		"mass": 1000.0,
-		"radius": 30.0,
+		"lock_circular": true,
+		"mass": 10000.0,
+		"radius": 100.0,
 		"color": [0.5, 0.5, 0.5, 1.0],
 		"perihelion": base_radius,
 		"aphelion": base_radius,
@@ -1141,15 +1141,15 @@ func _make_default_moon_spec() -> Dictionary:
 	return {
 		"radius": 6.0,
 		"color": [0.7, 0.7, 0.8, 1.0],
-		"perihelion": 20.0,
-		"aphelion": 30.0,
+		"perihelion": 50.0,
+		"aphelion": 50.0,
 		"angle_of_aphelion": 0.0,
 		"phase": 0.0,
 		"is_landable": true,
-		"mass": 10.0,
+		"mass": 50.0,
 		"has_astronaut": false,
 		"has_fuel": false,
-		"lock_circular": false,
+		"lock_circular": true,
 		"fuel_orbit_radius": 8.0,
 		"fuel_orbit_speed": 0.5,
 	}

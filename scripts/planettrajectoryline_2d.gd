@@ -26,7 +26,7 @@ extends Line2D
 
 ## Time interval (in seconds) between consecutive orbit markers.
 ## Smaller = more markers, denser visual.
-@export var time_marker_interval: float = 30.0
+@export var time_marker_interval: float = 10.0
 
 ## Radius (in pixels) of each orbit marker dot.
 @export var time_marker_radius: float = 4.0

@@ -21,10 +21,10 @@ extends Camera2D
 # --- Zoom (works in both modes) ---
 
 ## Zoom change per mouse-wheel click. Positive = zoom in.
-@export var zoom_step: float = 0.15
+@export var zoom_step: float = 0.05
 
 ## Minimum zoom (camera pulled back). Smaller = see more of the system.
-@export var min_zoom: float = 0.1
+@export var min_zoom: float = 0.05
 
 ## Maximum zoom (camera pulled in). Larger = see less, more detail.
 @export var max_zoom: float = 3.0

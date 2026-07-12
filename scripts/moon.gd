@@ -48,12 +48,12 @@ extends Node2D
 ## actual orbital perihelion (distance from planet center) is
 ## `host_radius + this value`. Must be >= 0 to keep the moon outside
 ## the planet.
-@export var perihelion: float = 30.0
+@export var perihelion: float = 50.0
 
 ## Distance at farthest approach from the host planet's SURFACE. Same
 ## offset semantics as `perihelion`. Equal to `perihelion` for a
 ## circular orbit.
-@export var aphelion: float = 30.0
+@export var aphelion: float = 50.0
 
 ## Orientation of the orbital ellipse, in radians.
 @export var angle_of_aphelion: float = 0.0
@@ -67,7 +67,7 @@ extends Node2D
 ## Visual radius (world units). Doesn't affect physics — only the
 ## rendered Polygon2D shape. Collision radius uses this same value
 ## (single source of truth).
-@export var radius: float = 6.0
+@export var radius: float = 10.0
 
 ## Fill color for the moon's visual.
 @export var color: Color = Color(0.7, 0.7, 0.8)
@@ -77,7 +77,7 @@ extends Node2D
 
 ## Gravitational mass. Smaller than typical planets by default; tune per
 ## level to control how strongly the moon tugs the rocket.
-@export var mass: float = 10.0
+@export var mass: float = 1000.0
 
 
 # --- Gameplay flags ---
@@ -95,7 +95,7 @@ extends Node2D
 @export var has_fuel: bool = false
 
 ## Distance beyond the moon's surface where the fuel pickup orbits.
-@export var fuel_orbit_radius: float = 8.0
+@export var fuel_orbit_radius: float = 15.0
 
 ## Angular speed (radians/second) of the orbiting fuel pickup.
 @export var fuel_orbit_speed: float = 0.5
