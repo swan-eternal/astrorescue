@@ -72,7 +72,16 @@ func _process(delta: float) -> void:
 		# but not instant. Also gives a graceful re-attach when toggling
 		# out of free-cam mode.
 		var target_pos: Vector2 = get_parent().global_position
-		position = position.lerp(target_pos, follow_speed * delta)
+		# Scale the lerp fraction by Engine.time_scale so the camera keeps
+		# up at high time-warp. At 1x the lerp is follow_speed * delta
+		# (~0.083 per real frame — smooth follow). At 32x warp the rocket
+		# moves 32x more world units per real frame, but _process is still
+		# called once per real frame regardless of time_scale, so without
+		# this scale the camera lags by `v / t` units and effectively loses
+		# the rocket. Clamping to [0, 1] makes the camera snap to the
+		# rocket's current position at very high warp rather than overshoot.
+		var t: float = clampf(follow_speed * delta * Engine.time_scale, 0.0, 1.0)
+		position = position.lerp(target_pos, t)
 
 
 ## Mouse handling: wheel = zoom, left-drag = pan (only in free-cam mode).
