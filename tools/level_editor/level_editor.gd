@@ -451,8 +451,15 @@ func _build_planet_fields(body: Dictionary, _index: int) -> void:
 	_add_slider_with_input_field("Mass", body, "mass", PLANET_MASS.x, PLANET_MASS.y, PLANET_MASS.z)
 	_add_slider_with_input_field("Radius", body, "radius", PLANET_RADIUS.x, PLANET_RADIUS.y, PLANET_RADIUS.z)
 	_add_color_picker_field(body, "color")
-	_add_slider_with_input_field("Perihelion", body, "perihelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
-	_add_slider_with_input_field("Aphelion", body, "aphelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
+	# Linked perihelion/aphelion pair (planet orbits the sun). Widgets
+	# share lock state via body["lock_circular"] (live read on every
+	# edit). Lock checkbox appears BELOW the orbit fields — required
+	# ordering because the checkbox needs the widget refs to snap-update
+	# the aphelion display on toggle ON without rebuilding the inspector
+	# (a rebuild would queue_free the CheckBox mid-toggle).
+	var orbit_widgets := _add_perihelion_aphelion_pair(
+		body, ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
+	_add_lock_circular_checkbox(body, orbit_widgets)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", body, "phase")
 	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", FUEL_ORBIT_RADIUS.x, FUEL_ORBIT_RADIUS.y, FUEL_ORBIT_RADIUS.z)
@@ -468,8 +475,12 @@ func _build_asteroid_fields(body: Dictionary, _index: int) -> void:
 	_add_check_box_field("Has Fuel", body, "has_fuel")
 	_add_slider_with_input_field("Fuel Orbit Radius", body, "fuel_orbit_radius", FUEL_ORBIT_RADIUS.x, FUEL_ORBIT_RADIUS.y, FUEL_ORBIT_RADIUS.z)
 	_add_slider_with_input_field("Fuel Orbit Speed", body, "fuel_orbit_speed", FUEL_ORBIT_SPEED.x, FUEL_ORBIT_SPEED.y, FUEL_ORBIT_SPEED.z)
-	_add_slider_with_input_field("Perihelion", body, "perihelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
-	_add_slider_with_input_field("Aphelion", body, "aphelion", ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
+	# Linked perihelion/aphelion pair (asteroid orbits the sun). Same
+	# distance bounds as planets; see _build_planet_fields for why the
+	# lock checkbox appears BELOW the orbit fields.
+	var orbit_widgets := _add_perihelion_aphelion_pair(
+		body, ORBIT_DISTANCE.x, ORBIT_DISTANCE.y, ORBIT_DISTANCE.z)
+	_add_lock_circular_checkbox(body, orbit_widgets)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", body, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", body, "phase")
 
@@ -587,6 +598,149 @@ func _add_check_box_field(label_text: String, body: Dictionary, key: String) -> 
 		_refresh_viewport()
 	)
 	_inspector.add_child(cb)
+
+
+# --- Lock Circular: paired orbit widgets + linked-checkbox ---
+# Perihelion/aphelion can be edited independently (eccentric orbit)
+# or locked together (circular orbit). The lock state lives in
+# body["lock_circular"] (bool) and is checked LIVE by the paired-widget
+# handlers — toggling the CheckBox takes effect on the next edit
+# without rewiring signals. Lock applies to planet, moon, and asteroid
+# bodies — anywhere perihelion and aphelion both exist and orbit math
+# treats them as independent distances from the central body.
+#
+# Orbit math itself (OrbitCalculator.compute_state) already treats
+# perihelion == aphelion as a circular orbit — no loader changes
+# needed. "lock_circular" is purely a UX preference in the editor.
+
+## Build a perihelion + aphelion linked pair. Each side is a
+## slider+input widget that reads/writes its own body key. When the
+## body's lock_circular is true, editing either side mirrors the new
+## value to BOTH keys and updates BOTH widget displays (using
+## `_sync_widget_value` to suppress value_changed loops). When false,
+## each side edits only its own key — independent perihelion and
+## aphelion (eccentric orbit).
+##
+## Returns {"peri_w": {slider, sb, container}, "aph_w": ...} so the
+## "Lock Circular" checkbox can update the aphelion widget's display
+## directly when toggled ON (snap-equal). Avoids an inspector rebuild
+## — which would queue_free this very CheckBox mid-toggle.
+func _add_perihelion_aphelion_pair(
+	body: Dictionary, min_v: float, max_v: float, step: float
+) -> Dictionary:
+	var peri_w := _make_slider_with_input_widget(
+		"Perihelion", float(body.get("perihelion", 1000.0)), min_v, max_v, step)
+	var aph_w := _make_slider_with_input_widget(
+		"Aphelion", float(body.get("aphelion", 1000.0)), min_v, max_v, step)
+
+	peri_w.sb.value_changed.connect(func(v: float):
+		body["perihelion"] = v
+		_sync_widget_value(peri_w, v)
+		if body.get("lock_circular", false):
+			body["aphelion"] = v
+			_sync_widget_value(aph_w, v)
+		_refresh_viewport()
+	)
+	peri_w.slider.value_changed.connect(func(v: float):
+		body["perihelion"] = v
+		_sync_widget_value(peri_w, v)
+		if body.get("lock_circular", false):
+			body["aphelion"] = v
+			_sync_widget_value(aph_w, v)
+		_refresh_viewport()
+	)
+	aph_w.sb.value_changed.connect(func(v: float):
+		body["aphelion"] = v
+		_sync_widget_value(aph_w, v)
+		if body.get("lock_circular", false):
+			body["perihelion"] = v
+			_sync_widget_value(peri_w, v)
+		_refresh_viewport()
+	)
+	aph_w.slider.value_changed.connect(func(v: float):
+		body["aphelion"] = v
+		_sync_widget_value(aph_w, v)
+		if body.get("lock_circular", false):
+			body["perihelion"] = v
+			_sync_widget_value(peri_w, v)
+		_refresh_viewport()
+	)
+	_inspector.add_child(peri_w.container)
+	_inspector.add_child(aph_w.container)
+	return {"peri_w": peri_w, "aph_w": aph_w}
+
+
+## "Lock Circular" checkbox — writes body["lock_circular"]. On toggle
+## ON, snaps aphelion = perihelion in the body dict AND updates the
+## aphelion widget's display so the two sliders match immediately. On
+## toggle OFF, leaves values as-is (lock disengages for the NEXT edit
+## — values stay whatever they were last set to).
+##
+## `orbit_widgets_ref` comes from `_add_perihelion_aphelion_pair` and
+## is needed to update the aphelion display on snap without rebuilding
+## the inspector.
+func _add_lock_circular_checkbox(body: Dictionary, orbit_widgets_ref: Dictionary) -> void:
+	var cb := CheckBox.new()
+	cb.text = "Lock Circular"
+	cb.button_pressed = bool(body.get("lock_circular", false))
+	cb.toggled.connect(func(pressed: bool):
+		body["lock_circular"] = pressed
+		if pressed:
+			var v: float = float(body.get("perihelion", 0.0))
+			body["aphelion"] = v
+			_sync_widget_value(orbit_widgets_ref["aph_w"], v)
+		_refresh_viewport()
+	)
+	_inspector.add_child(cb)
+
+
+## Build one slider+input widget combo (Label on top, HSlider +
+## SpinBox in an HBox below). Returns refs to the container and each
+## control so callers (pair helper) can update display values without
+## rebuilding the widget. value_changed wiring is the caller's
+## responsibility — `_add_slider_with_input_field` does the standalone
+## wiring; the pair helper adds the mirror logic.
+func _make_slider_with_input_widget(
+	label_text: String, initial_value: float,
+	min_v: float, max_v: float, step: float
+) -> Dictionary:
+	var vbox := VBoxContainer.new()
+	var label := Label.new()
+	label.text = label_text
+	vbox.add_child(label)
+	var hbox := HBoxContainer.new()
+	vbox.add_child(hbox)
+	var slider := HSlider.new()
+	slider.min_value = min_v
+	slider.max_value = max_v
+	slider.step = step
+	slider.value = initial_value
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(0, 24)
+	hbox.add_child(slider)
+	var sb := SpinBox.new()
+	sb.min_value = min_v
+	sb.max_value = max_v
+	sb.step = step
+	sb.value = initial_value
+	sb.custom_minimum_size = Vector2(110, 0)
+	hbox.add_child(sb)
+	return {"container": vbox, "slider": slider, "sb": sb}
+
+
+## Sync a widget pair's slider + SpinBox display to v. set_block_signals
+## on BOTH controls before writing — either setter can re-fire the
+## partner's value_changed and re-enter the handler. Centralized here
+## so the standalone-field helper and the pair helper use the same
+## suppression dance (the original inline pattern is otherwise a 3-line
+## snippet duplicated in each handler).
+func _sync_widget_value(w: Dictionary, v: float) -> void:
+	w.slider.set_block_signals(true)
+	w.slider.value = v
+	w.slider.set_block_signals(false)
+	w.sb.set_block_signals(true)
+	w.sb.value = v
+	w.sb.set_block_signals(false)
 
 
 ## Color field: HBox [Label] [ColorPickerButton]. Color is stored as
@@ -715,8 +869,14 @@ func _add_moon_editor(planet_body: Dictionary, moon_index: int) -> void:
 	_add_check_box_field("Has Astronaut", moon, "has_astronaut")
 	_add_check_box_field("Has Fuel", moon, "has_fuel")
 	_add_slider_with_input_field("Mass", moon, "mass", MOON_MASS.x, MOON_MASS.y, MOON_MASS.z)
-	_add_slider_with_input_field("Perihelion", moon, "perihelion", MOON_ORBIT_DISTANCE.x, MOON_ORBIT_DISTANCE.y, MOON_ORBIT_DISTANCE.z)
-	_add_slider_with_input_field("Aphelion", moon, "aphelion", MOON_ORBIT_DISTANCE.x, MOON_ORBIT_DISTANCE.y, MOON_ORBIT_DISTANCE.z)
+	# Linked perihelion/aphelion pair for the moon — same UI shape as
+	# the top-level planet/asteroid inspectors, just with surface-
+	# relative distance bounds (MOON_ORBIT_DISTANCE). The math inside
+	# scripts/moon.gd offsets by parent radius; this UI value goes
+	# straight to the spec.
+	var orbit_widgets := _add_perihelion_aphelion_pair(
+		moon, MOON_ORBIT_DISTANCE.x, MOON_ORBIT_DISTANCE.y, MOON_ORBIT_DISTANCE.z)
+	_add_lock_circular_checkbox(moon, orbit_widgets)
 	_add_slider_with_input_degrees_field("Angle of Aphelion", moon, "angle_of_aphelion")
 	_add_slider_with_input_degrees_field("Phase", moon, "phase")
 	_add_slider_with_input_field("Fuel Orbit Radius", moon, "fuel_orbit_radius", MOON_FUEL_ORBIT_RADIUS.x, MOON_FUEL_ORBIT_RADIUS.y, MOON_FUEL_ORBIT_RADIUS.z)
@@ -961,6 +1121,7 @@ func _make_default_planet_spec() -> Dictionary:
 		"is_home": false,
 		"has_astronaut": false,
 		"has_fuel": false,
+		"lock_circular": false,
 		"mass": 1000.0,
 		"radius": 30.0,
 		"color": [0.5, 0.5, 0.5, 1.0],
@@ -988,6 +1149,7 @@ func _make_default_moon_spec() -> Dictionary:
 		"mass": 10.0,
 		"has_astronaut": false,
 		"has_fuel": false,
+		"lock_circular": false,
 		"fuel_orbit_radius": 8.0,
 		"fuel_orbit_speed": 0.5,
 	}
@@ -1010,6 +1172,7 @@ func _make_default_asteroid_spec() -> Dictionary:
 		"phase": 0.0,
 		"is_landable": false,
 		"has_fuel": false,
+		"lock_circular": false,
 		"fuel_orbit_radius": 12.0,
 		"fuel_orbit_speed": 0.3,
 	}
