@@ -9,11 +9,11 @@ extends Node
 ## §6.1 for why we don't rely on the bare identifier.
 ##
 
-const MUSIC_MENU := "res://assets/sound/menubackground.mp3"
-const MUSIC_GAMEPLAY := "res://assets/sound/gamebackground.mp3"
-const SFX_THRUSTER := "res://assets/sound/thruster.mp3"
-const SFX_ASTRONAUT_PICKUP := "res://assets/sound/success_ding.mp3"
-const SFX_FUEL_PICKUP := "res://assets/sound/fuelbloop.mp3"
+const MUSIC_MENU := "res://assets/sound/menubackground.ogg"
+const MUSIC_GAMEPLAY := "res://assets/sound/gamebackground.ogg"
+const SFX_THRUSTER := "res://assets/sound/thruster.ogg"
+const SFX_ASTRONAUT_PICKUP := "res://assets/sound/success_ding.ogg"
+const SFX_FUEL_PICKUP := "res://assets/sound/fuelbloop.ogg"
 
 var _music_player: AudioStreamPlayer
 var _thruster_player: AudioStreamPlayer
@@ -31,8 +31,8 @@ func _ready() -> void:
 	_music_player.bus = "Music"
 	add_child(_music_player)
 
-	# Thruster player: long-lived so the loop is seamless. The thruster.mp3
-	# stream is set to loop=true in play_looping_stream() so the sound
+	# Thruster player: long-lived so the loop is seamless. The thruster.ogg
+	# stream is loaded with loop=true (set in its .import file) so the sound
 	# sustains as long as start_thruster() has been called. Routed to
 	# the "SFX" bus.
 	_thruster_player = AudioStreamPlayer.new()
