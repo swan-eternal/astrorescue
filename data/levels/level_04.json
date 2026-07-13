@@ -1,0 +1,93 @@
+{
+  "name": "Level 03",
+  "version": 3,
+
+  "bodies": [
+    {
+      "type": "sun",
+      "mass": 4000000,
+      "radius": 200.0,
+      "is_landable": false,
+      "position": [-1, -3]
+    },
+    {
+      "type": "planet",
+      "name": "planet_aether",
+      "is_home": false,
+      "has_astronaut": false,
+      "has_fuel": false,
+      "mass": 3000,
+      "radius": 15.0,
+      "color": [0.4, 0.7, 1.0, 1.0],
+      "perihelion": 500.0,
+      "aphelion": 500.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 0.0
+    },
+    {
+      "type": "planet",
+      "name": "planet_borealis",
+      "is_home": false,
+      "has_astronaut": true,
+      "has_fuel": false,
+      "mass": 7000,
+      "radius": 30.0,
+      "color": [1.0, 0.7, 0.2, 1.0],
+      "perihelion": 2400.0,
+      "aphelion": 2400.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 2.0
+    },
+    {
+      "type": "planet",
+      "name": "planet_corona",
+      "is_home": false,
+      "has_astronaut": true,
+      "has_fuel": false,
+      "mass": 11000,
+      "radius": 40.0,
+      "color": [0.4, 0.9, 0.4, 1.0],
+      "perihelion": 3200.0,
+      "aphelion": 3200.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 4.0
+    },
+    {
+      "type": "planet",
+      "name": "planet_drakos",
+      "is_home": false,
+      "has_astronaut": true,
+      "has_fuel": true,
+      "mass": 14000,
+      "radius": 45.0,
+      "color": [0.6, 0.3, 0.9, 1.0],
+      "perihelion": 4800.0,
+      "aphelion": 4800.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 1.2,
+      "fuel_orbit_radius": 55.0,
+      "fuel_orbit_speed": 0.5
+    },
+    {
+      "type": "planet",
+      "name": "planet_elysium",
+      "is_home": true,
+      "has_astronaut": false,
+      "has_fuel": true,
+      "mass": 20000,
+      "radius": 60.0,
+      "color": [0.2, 0.5, 1.0, 1.0],
+      "perihelion": 7000.0,
+      "aphelion": 7000.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 3.5,
+      "fuel_orbit_radius": 70.0,
+      "fuel_orbit_speed": 0.5
+    }
+  ],
+
+  "rocket": {
+    "initial_position": [7000.0, 0.0],
+    "initial_velocity": [0.0, 50.0]
+  }
+}

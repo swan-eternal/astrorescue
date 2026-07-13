@@ -1,154 +1,63 @@
 {
+  "name": "Level 02",
+  "version": 3,
+
   "bodies": [
     {
-      "is_landable": false,
-      "mass": 10000000.0,
-      "position": [
-        0.0,
-        0.0
-      ],
+      "type": "sun",
+      "mass": 4000000,
       "radius": 200.0,
-      "type": "sun"
+      "is_landable": false,
+      "position": [-1, -3]
     },
     {
-      "angle_of_aphelion": 0.0,
-      "aphelion": 3050.0,
-      "color": [
-        0.308060050010681,
-        0.645470976829529,
-        0.362694531679153,
-        1.0
-      ],
-      "fuel_orbit_radius": 50.0,
-      "fuel_orbit_speed": 0.509999765083192,
-      "has_astronaut": false,
-      "has_fuel": false,
-      "is_home": true,
-      "mass": 2570500.0,
-      "moons": [
-        {
-          "angle_of_aphelion": 1.09955742875643,
-          "aphelion": 199.0,
-          "color": [
-            0.7,
-            0.7,
-            0.8,
-            1.0
-          ],
-          "fuel_orbit_radius": 60.0,
-          "fuel_orbit_speed": 0.489999765530227,
-          "has_astronaut": true,
-          "has_fuel": true,
-          "is_landable": true,
-          "mass": 16718.0,
-          "perihelion": 196.0,
-          "phase": 0.0174532925199433,
-          "radius": 40.0
-        }
-      ],
-      "name": "earth",
-      "perihelion": 2280.0,
-      "phase": -0.0174532925199433,
-      "radius": 120.0,
-      "type": "planet"
-    },
-    {
-      "angle_of_aphelion": -2.12930168743308,
-      "aphelion": 3400.0,
-      "color": [
-        0.747116148471832,
-        0.294683754444122,
-        0.294683754444122,
-        1.0
-      ],
-      "fuel_orbit_radius": 50.0,
-      "fuel_orbit_speed": 0.5,
+      "type": "planet",
+      "name": "planet_alpha",
+      "is_home": false,
       "has_astronaut": true,
       "has_fuel": true,
-      "is_home": false,
-      "mass": 51900.0,
-      "moons": [],
-      "name": "mars",
-      "perihelion": 3580.0,
-      "phase": 0.0174532925199433,
-      "radius": 117.0,
-      "type": "planet"
-    },
-    {
+      "mass": 8000,
+      "radius": 30.0,
+      "color": [0.95, 0.65, 0.2, 1.0],
+      "perihelion": 1000.0,
+      "aphelion": 1000.0,
       "angle_of_aphelion": 0.0,
-      "aphelion": 5090.0,
-      "color": [
-        0.281876921653748,
-        0.573591113090515,
-        0.672182321548462,
-        1.0
-      ],
-      "fuel_orbit_radius": 48.0,
-      "fuel_orbit_speed": 0.489999765530227,
-      "has_astronaut": false,
-      "has_fuel": false,
-      "is_home": false,
-      "mass": 1581800.0,
-      "moons": [
-        {
-          "angle_of_aphelion": -0.0174532925199433,
-          "aphelion": 172.0,
-          "color": [
-            0.7,
-            0.7,
-            0.8,
-            1.0
-          ],
-          "fuel_orbit_radius": 8.0,
-          "fuel_orbit_speed": 0.5,
-          "has_astronaut": true,
-          "has_fuel": false,
-          "is_landable": true,
-          "mass": 10.0,
-          "perihelion": 169.0,
-          "phase": -0.0349065850398866,
-          "radius": 30.0
-        }
-      ],
-      "name": "neptune",
-      "perihelion": 4830.0,
       "phase": 0.0,
-      "radius": 307.0,
-      "type": "planet"
+      "fuel_orbit_radius": 40.0,
+      "fuel_orbit_speed": 0.5
     },
     {
-      "angle_of_aphelion": 0.0,
-      "aphelion": 7680.0,
-      "color": [
-        0.5,
-        0.5,
-        0.5,
-        1.0
-      ],
-      "fuel_orbit_radius": 50.0,
-      "fuel_orbit_speed": 0.5,
+      "type": "planet",
+      "name": "planet_beta",
+      "is_home": false,
       "has_astronaut": true,
       "has_fuel": false,
-      "is_home": false,
-      "mass": 80000.0,
-      "moons": [],
-      "name": "Pluto",
-      "perihelion": 8970.0,
-      "phase": 0.0,
-      "radius": 42.0,
-      "type": "planet"
+      "mass": 15000,
+      "radius": 45.0,
+      "color": [0.3, 0.55, 0.9, 1.0],
+      "perihelion": 2500.0,
+      "aphelion": 2500.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 1.5
+    },
+    {
+      "type": "planet",
+      "name": "planet_gamma",
+      "is_home": true,
+      "has_astronaut": false,
+      "has_fuel": false,
+      "mass": 25000,
+      "radius": 60.0,
+      "color": [0.85, 0.25, 0.3, 1.0],
+      "perihelion": 4500.0,
+      "aphelion": 4500.0,
+      "angle_of_aphelion": 0.0,
+      "phase": 3.0
     }
   ],
-  "name": "New Level",
+
   "rocket": {
-    "initial_position": [
-      0.0,
-      0.0
-    ],
-    "initial_velocity": [
-      0.0,
-      50.0
-    ]
-  },
-  "version": 3
+    "initial_position": [3500.0, 0.0],
+    "initial_velocity": [0.0, 50.0]
+  }
 }
