@@ -1,20 +1,23 @@
 extends Control
 ##
-## LevelSelect: simple level picker. Three buttons (Level 1, 2, 3) stacked
-## vertically. Each is enabled or disabled based on SaveState.is_level_unlocked().
-## Disabled buttons show "Level N (locked)" with a Back to Main Menu at the
-## bottom. Clicking an enabled button loads the corresponding level scene.
+## LevelSelect: simple level picker. One button per level file in
+## data/levels/, stacked vertically. Each is enabled or disabled based
+## on SaveState.is_level_unlocked(). Disabled buttons show
+## "Level N (locked)" with a Back to Main Menu at the bottom. Clicking
+## an enabled button loads the corresponding level scene.
+##
+## Level buttons are built at runtime from the file system (see
+## _build_level_buttons / _max_level_number), so adding a new
+## level_NN.json automatically adds a button — no scene or constant
+## edits needed.
 ##
 
-# Hardcoded upper bound on level numbering for the level_%02d.tscn
-# filename pattern. Bump this when adding new levels.
-const MAX_LEVEL: int = 3
+# Where the editor's level JSON files live. The scanner looks for
+# `level_<N>.json` files in this directory to size the button list.
+const LEVELS_DIR := "res://data/levels/"
+const LEVEL_FILENAME_PREFIX := "level_"
+const LEVEL_FILENAME_EXT := ".json"
 
-@onready var buttons: Array = [
-	$CenterContainer/VBoxContainer/Level1Button,
-	$CenterContainer/VBoxContainer/Level2Button,
-	$CenterContainer/VBoxContainer/Level3Button,
-]
 @onready var custom_levels_button: Button = $CenterContainer/VBoxContainer/CustomLevelsButton
 @onready var back_button: Button = $CenterContainer/VBoxContainer/BackButton
 @onready var _audio_manager: Node = get_node("/root/AudioManager")
@@ -26,10 +29,9 @@ const MAX_LEVEL: int = 3
 var _custom_dialog: FileDialog
 
 
-## Wire up the back button, start the menu music, and enable/disable
-## each level button based on SaveState.is_level_unlocked(). Disabled
-## buttons display "Level N (locked)" so the player knows what they're
-## missing.
+## Wire up the back + custom-levels buttons, start the menu music,
+## build the per-level buttons dynamically, then set up the custom-levels
+## file picker.
 func _ready() -> void:
 	back_button.pressed.connect(_on_back_pressed)
 	custom_levels_button.pressed.connect(_on_custom_levels_pressed)
@@ -37,18 +39,75 @@ func _ready() -> void:
 	# Level picker is a menu-like screen, so it uses the menu music.
 	_audio_manager.play_menu_music()
 
-	for i in range(buttons.size()):
-		var level_num: int = i + 1
-		var button: Button = buttons[i]
-		if SaveState.is_level_unlocked(level_num):
-			button.disabled = false
-			button.text = "Level %d" % level_num
-			button.pressed.connect(_on_level_selected.bind(level_num))
-		else:
-			button.disabled = true
-			button.text = "Level %d (locked)" % level_num
-
+	_build_level_buttons()
 	_build_custom_dialog()
+
+
+## Build one Button per `level_<N>.json` file found in LEVELS_DIR, in
+## numeric order, inserted into the VBoxContainer immediately before
+## CustomLevels. Each button is enabled or disabled based on
+## SaveState.is_level_unlocked(); disabled ones get "(locked)" in the
+## label. A spacer is inserted between the last level button and
+## CustomLevels to preserve the vertical rhythm the old Spacer2 had.
+##
+## Adding a new level file (`level_06.json`) shows up here automatically
+## on the next menu open — no scene or constant edits needed.
+func _build_level_buttons() -> void:
+	var vbox: VBoxContainer = $CenterContainer/VBoxContainer
+	var custom_levels_idx: int = vbox.get_children().find(custom_levels_button)
+
+	# Walk 1..N in order, inserting each new button at the current
+	# insert index (which advances past each inserted button). This
+	# produces the right order with one pass.
+	var insert_idx: int = custom_levels_idx
+	for level_num in range(1, _max_level_number() + 1):
+		var btn := Button.new()
+		btn.text = "Level %d" % level_num
+		btn.custom_minimum_size = Vector2(220, 0)
+		if SaveState.is_level_unlocked(level_num):
+			btn.pressed.connect(_on_level_selected.bind(level_num))
+		else:
+			btn.disabled = true
+			btn.text = "Level %d (locked)" % level_num
+		vbox.add_child(btn)
+		vbox.move_child(btn, insert_idx)
+		insert_idx += 1
+
+	# Spacer between the last level button and CustomLevels. Same size
+	# as the deleted Spacer2 node so the vertical rhythm matches.
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 30)
+	vbox.add_child(spacer)
+	vbox.move_child(spacer, insert_idx)
+
+
+## Scan LEVELS_DIR for `level_<N>.json` files and return the highest N.
+## Returns 0 if the directory is missing or contains no level files
+## (menu shows no level buttons, only Custom Levels). Replaces the old
+## hardcoded MAX_LEVEL — adding a level file now shows up automatically.
+static func _max_level_number() -> int:
+	var dir := DirAccess.open(LEVELS_DIR)
+	if dir == null:
+		return 0
+	var max_n: int = 0
+	dir.list_dir_begin()
+	var filename := dir.get_next()
+	while filename != "":
+		if filename.begins_with(LEVEL_FILENAME_PREFIX) and filename.ends_with(LEVEL_FILENAME_EXT):
+			# Slice out the numeric portion between the prefix and
+			# extension. is_valid_int() rejects things like
+			# `level_01a.json` or `level_.json`.
+			var digits: String = filename.substr(
+				LEVEL_FILENAME_PREFIX.length(),
+				filename.length() - LEVEL_FILENAME_PREFIX.length() - LEVEL_FILENAME_EXT.length()
+			)
+			if digits.is_valid_int():
+				var n: int = digits.to_int()
+				if n > max_n:
+					max_n = n
+		filename = dir.get_next()
+	dir.list_dir_end()
+	return max_n
 
 
 ## Build the FileDialog used by the Custom Levels picker. Same shape as

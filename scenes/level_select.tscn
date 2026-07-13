@@ -43,25 +43,6 @@ theme_override_font_sizes/font_size = 36
 layout_mode = 2
 custom_minimum_size = Vector2(0, 20)
 
-[node name="Level1Button" type="Button" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
-text = "Level 1"
-custom_minimum_size = Vector2(220, 0)
-
-[node name="Level2Button" type="Button" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
-text = "Level 2"
-custom_minimum_size = Vector2(220, 0)
-
-[node name="Level3Button" type="Button" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
-text = "Level 3"
-custom_minimum_size = Vector2(220, 0)
-
-[node name="Spacer2" type="Control" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 30)
-
 [node name="CustomLevelsButton" type="Button" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 text = "Custom Levels"
