@@ -43,10 +43,23 @@ func _ready() -> void:
 		elif child is Camera2D:
 			camera = child
 
-	# Count astronauts in level (one per planet with has_astronaut = true).
-	# Discovered at startup so the HUD doesn't need to be updated when
-	# levels change. Implicit bool coercion handles null/false/true uniformly
-	# (sun doesn't have this property → null → skipped).
+	# Astronaut count is deferred. Reason: in scenes/level.tscn the `hud`
+	# node is declared before `LevelLoader`, so this `_ready()` fires
+	# before LevelLoader populates the `attractors` group. Counting here
+	# would always return 0 and the label would permanently read "—".
+	# Mirrors the pattern in scripts/level_controller.gd's `_ready`,
+	# which uses `call_deferred("_initialize")` for the same reason —
+	# `call_deferred` callbacks fire after every node's `_ready()` has
+	# completed, so the group is populated by the time we read it.
+	call_deferred("_count_astronauts")
+
+
+## Count astronauts in the level by scanning the `attractors` group for
+## bodies with `has_astronaut = true`. Deferred from `_ready()` so the
+## group is populated by LevelLoader's instantiation pass. Implicit bool
+## coercion handles null/false/true uniformly (sun doesn't have this
+## property → null → skipped).
+func _count_astronauts() -> void:
 	for body in get_tree().get_nodes_in_group("attractors"):
 		if body.get("has_astronaut"):
 			total_astronauts += 1
