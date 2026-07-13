@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/level_loader.gd" id="5_loader"]
 [ext_resource type="Script" path="res://scripts/pause_menu.gd" id="6_pause"]
 [ext_resource type="Script" path="res://scripts/soi_indicator.gd" id="7_soi"]
+[ext_resource type="Script" path="res://scripts/home_planet_indicator.gd" id="8_home"]
 
 [node name="level" type="Node2D"]
 
@@ -15,6 +16,9 @@ script = ExtResource("1_lctrl")
 
 [node name="SoiIndicator" type="Node2D" parent="."]
 script = ExtResource("7_soi")
+
+[node name="HomePlanetIndicator" type="Node2D" parent="."]
+script = ExtResource("8_home")
 
 [node name="SunContainer" type="Node2D" parent="."]
 
