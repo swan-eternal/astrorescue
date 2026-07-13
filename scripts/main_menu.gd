@@ -1,15 +1,10 @@
 extends Control
 ##
-## MainMenu: game start screen. Title + buttons for Start (which becomes
+## MainMenu: game start screen. Logo + buttons for Start (which becomes
 ## "Continue" once any level is completed) / How to Play / Level Select /
 ## Quit. Start loads the highest unlocked level (per SaveState). Level Select
 ## opens the level picker.
 ##
-
-@onready var how_to_play_panel: Panel = $HowToPlayPanel
-@onready var close_button: Button = $HowToPlayPanel/VBoxContainer/CloseButton
-@onready var start_button: Button = $CenterContainer/VBoxContainer/StartButton
-@onready var _audio_manager: Node = get_node("/root/AudioManager")
 
 # Hardcoded upper bound on level numbering for the level_%02d.tscn
 # filename pattern. Bump this when adding new levels.
@@ -19,6 +14,30 @@ const MAX_LEVEL: int = 3
 # the pause menu instances — settings_menu handles its own Esc/Close
 # and queue_frees itself; main_menu stays as the backdrop.
 const SETTINGS_MENU_SCENE := "res://scenes/settings_menu.tscn"
+
+# Instruction pages shown in the How to Play overlay, indexed by
+# _current_page. _update_page() swaps the TextureRect's texture and
+# toggles Prev/Next disabled state at the ends. Adding a page is a
+# one-line change here — the panel auto-resizes its indicator.
+const INSTRUCTION_PAGES: Array[Texture2D] = [
+	preload("res://assets/images/instructionPage1.png"),
+	preload("res://assets/images/instructionPage2.png"),
+]
+
+
+@onready var how_to_play_panel: Panel = $HowToPlayPanel
+@onready var instruction_image: TextureRect = $HowToPlayPanel/VBoxContainer/InstructionImage
+@onready var prev_button: Button = $HowToPlayPanel/VBoxContainer/NavRow/PrevButton
+@onready var page_indicator: Label = $HowToPlayPanel/VBoxContainer/NavRow/PageIndicator
+@onready var next_button: Button = $HowToPlayPanel/VBoxContainer/NavRow/NextButton
+@onready var close_button: Button = $HowToPlayPanel/VBoxContainer/CloseButton
+@onready var start_button: Button = $CenterContainer/VBoxContainer/StartButton
+@onready var _audio_manager: Node = get_node("/root/AudioManager")
+
+# Which instruction page is currently shown. Resets to 0 every time
+# the How to Play panel opens (set in _on_how_to_play_pressed), so
+# closing mid-read doesn't lose the player's spot in a surprising way.
+var _current_page: int = 0
 
 
 ## Wire up button signals, start the menu music, and toggle the Start
@@ -32,6 +51,8 @@ func _ready() -> void:
 	$CenterContainer/VBoxContainer/QuitButton.pressed.connect(_on_quit_pressed)
 	$CenterContainer/VBoxContainer/LevelEditorButton.pressed.connect(_on_level_editor_pressed)
 	close_button.pressed.connect(_on_how_to_play_close)
+	prev_button.pressed.connect(_on_prev_page)
+	next_button.pressed.connect(_on_next_page)
 
 	# Background music for the menu (and the level picker, which is also a menu).
 	_audio_manager.play_menu_music()
@@ -59,10 +80,41 @@ func _on_level_select_pressed() -> void:
 	get_tree().change_scene_to_file("res://scenes/level_select.tscn")
 
 
-## How-To-Play-button handler: toggle the help overlay on/off.
+## How-To-Play-button handler: toggle the help overlay on/off. When
+## opening, reset to page 1 so the player always starts at the
+## beginning of the tutorial rather than wherever they left off.
 ## Same button both opens and closes it for keyboard-friendly UX.
 func _on_how_to_play_pressed() -> void:
 	how_to_play_panel.visible = not how_to_play_panel.visible
+	if how_to_play_panel.visible:
+		_current_page = 0
+		_update_page()
+
+
+## Prev-page button: step backward through INSTRUCTION_PAGES. Disabled
+## at page 0 by _update_page (the click is also a no-op as a guard).
+func _on_prev_page() -> void:
+	if _current_page > 0:
+		_current_page -= 1
+		_update_page()
+
+
+## Next-page button: step forward through INSTRUCTION_PAGES. Disabled
+## at the last page by _update_page (the click is also a no-op as a guard).
+func _on_next_page() -> void:
+	if _current_page < INSTRUCTION_PAGES.size() - 1:
+		_current_page += 1
+		_update_page()
+
+
+## Sync the instruction-image texture, page indicator, and Prev/Next
+## disabled state to match `_current_page`. Called on initial display
+## (when the panel opens) and after every page change.
+func _update_page() -> void:
+	instruction_image.texture = INSTRUCTION_PAGES[_current_page]
+	page_indicator.text = "Page %d of %d" % [_current_page + 1, INSTRUCTION_PAGES.size()]
+	prev_button.disabled = _current_page == 0
+	next_button.disabled = _current_page == INSTRUCTION_PAGES.size() - 1
 
 
 ## Close-button handler (inside the How-To-Play panel). Explicit close

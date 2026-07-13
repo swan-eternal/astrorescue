@@ -21,3 +21,11 @@ scenes/level_01.tscn
 # game-content shipped with the binary. Keep them on disk for the
 # developer, but don't track or release them.
 Astro-Rescue*.md
+
+# Tuning + release-prep docs — local working references, not shipped.
+# `tuningparameters.md` lists gameplay knobs and editor bounds so they
+# can be tuned without spelunking the codebase. `itchio-html-release.md`
+# is a one-time checklist for the first web release. Add a new line
+# here for any future developer-only doc of the same shape.
+tuningparameters.md
+itchio-html-release.md

@@ -1,6 +1,8 @@
 [gd_scene format=3 uid="uid://mainmenusce1"]
 
 [ext_resource type="Script" path="res://scripts/main_menu.gd" id="1_menu"]
+[ext_resource type="Texture2D" uid="uid://c52sbnxytf3p2" path="res://assets/images/astrorescue-logo.png" id="2_logo"]
+[ext_resource type="Texture2D" uid="uid://c87k8t1kr672j" path="res://assets/images/instructionPage1.png" id="3_page1"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -33,11 +35,12 @@ layout_mode = 2
 theme_override_constants/separation = 16
 alignment = 1
 
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+[node name="LogoTexture" type="TextureRect" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-text = "Astro-Rescue"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 48
+custom_minimum_size = Vector2(280, 75)
+texture = ExtResource("2_logo")
+expand_mode = 0
+stretch_mode = 5
 
 [node name="Spacer1" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
@@ -97,9 +100,9 @@ anchor_bottom = 0.5
 grow_horizontal = 2
 grow_vertical = 2
 offset_left = -300.0
-offset_top = -200.0
+offset_top = -300.0
 offset_right = 300.0
-offset_bottom = 200.0
+offset_bottom = 300.0
 theme_override_constants/separation = 16
 alignment = 1
 
@@ -109,12 +112,32 @@ text = "How to Play"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 32
 
-[node name="HowToPlayBody" type="Label" parent="HowToPlayPanel/VBoxContainer"]
+[node name="InstructionImage" type="TextureRect" parent="HowToPlayPanel/VBoxContainer"]
 layout_mode = 2
-text = "How to play content placeholder.
-Will be replaced with an image asset."
+custom_minimum_size = Vector2(400, 400)
+texture = ExtResource("3_page1")
+expand_mode = 0
+stretch_mode = 5
+
+[node name="NavRow" type="HBoxContainer" parent="HowToPlayPanel/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+theme_override_constants/separation = 16
+
+[node name="PrevButton" type="Button" parent="HowToPlayPanel/VBoxContainer/NavRow"]
+layout_mode = 2
+text = "< Prev"
+
+[node name="PageIndicator" type="Label" parent="HowToPlayPanel/VBoxContainer/NavRow"]
+layout_mode = 2
+text = "Page 1 of 2"
 horizontal_alignment = 1
-autowrap_mode = 3
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 18
+
+[node name="NextButton" type="Button" parent="HowToPlayPanel/VBoxContainer/NavRow"]
+layout_mode = 2
+text = "Next >"
 
 [node name="CloseButton" type="Button" parent="HowToPlayPanel/VBoxContainer"]
 layout_mode = 2
