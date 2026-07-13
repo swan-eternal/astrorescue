@@ -3,6 +3,7 @@
 [ext_resource type="Script" path="res://scripts/hud.gd" id="1_ahhtf"]
 [ext_resource type="Script" path="res://scripts/orientation_dial.gd" id="2_odscript"]
 [ext_resource type="Script" path="res://scripts/astronaut_indicators.gd" id="3_indicators"]
+[ext_resource type="Script" path="res://scripts/home_planet_off_screen_indicator.gd" id="4_hpoff"]
 
 [node name="hud" type="CanvasLayer" unique_id=52726120]
 script = ExtResource("1_ahhtf")
@@ -64,3 +65,9 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
 script = ExtResource("3_indicators")
+
+[node name="HomePlanetEdgeArrow" type="Control" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("4_hpoff")
