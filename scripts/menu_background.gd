@@ -12,6 +12,34 @@ extends Node2D
 ## seamless (no jump-back to start). Tuned to feel like a slow
 ## establishing shot, not a kinetic intro.
 ##
+## IMPORTANT — scope of the Camera2D's transform:
+## In Godot 4 a Camera2D that becomes current applies its transform to
+## every CanvasItem it can reach. Earlier attempts at this menu UI
+## tried (a) leaving Camera2D at scene-root, which scaled every
+## Control into the bottom-right of the screen; then (b) wrapping
+## MenuBackground in a CanvasLayer, which the diagnostic proved had
+## no scoping effect — the same Camera2D showed up as the root
+## viewport's current camera, and its transform leaked into the
+## Background ColorRect anyway.
+##
+## Working approach: MenuBackground (and its Camera2D, sun, planets,
+## their Line2D children) lives inside a dedicated SubViewport
+## (`OrbitalViewport` under `OrbitalViewportContainer` in
+## scenes/main_menu.tscn). SubViewport has its own World2D + camera,
+## so the Camera2D's transform is truly isolated to the orbital
+## scene's canvas only — the main Viewport keeps an identity
+## canvas_transform, so the Background ColorRect and the menu
+## CenterContainer stay full-rect and the menu UI sits on top
+## unchanged.
+##
+## Note on Line2D alignment: `planettrajectoryline_2d.gd` reads
+## `get_viewport().get_canvas_transform()` to place orbit markers.
+## Inside the SubViewport, that resolves to the SubViewport's
+## canvas_transform (driven by THIS Camera2D), so markers, planet
+## bodies, and ellipse lines all share the same transform — they
+## align. The previous CanvasLayer-based attempt got the geometry
+## wrong because the cameras leaked through to the root viewport.
+##
 ## GameTime side effect: `_process` calls `GameTime.tick(delta)` so the
 ## background bodies actually orbit. When a level loads,
 ## `level_controller.gd::_initialize` calls `GameTime.reset()`, so
