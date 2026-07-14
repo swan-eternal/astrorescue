@@ -29,3 +29,12 @@ Astro-Rescue*.md
 # here for any future developer-only doc of the same shape.
 tuningparameters.md
 itchio-html-release.md
+
+# Godot export output — written next to the project root by the
+# Windows/Web export presets. Generated artifacts, not source. The
+# `AstroRescueV02.{exe,pck,console.exe}` files were tracked by
+# accident from an earlier export and were removed from tracking
+# in commit `3b08244`. These patterns keep them out going forward.
+*.pck
+*.exe
+*.zip

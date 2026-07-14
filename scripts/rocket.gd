@@ -95,6 +95,14 @@ const THROTTLE_DEADZONE := 0.001
 ## as a crash because it's too fast to be safe.
 @export var crash_speed_threshold: float = 80.0
 
+## Fraction of the tangent-velocity mismatch (rocket vs. planet)
+## closed each physics tick while in contact with a landable body.
+## 0.5 = settle in ~10 ticks (snappy, current default). Lower = more
+## skid/slip, higher = stickier landing. The biggest feel lever for
+## the continuous-physics landing model — sweep this first if
+## landings feel too slippery or too glued.
+@export var tangent_damping: float = 0.5
+
 # --- Astronaut pickup ---
 
 ## Pickup is proximity-based on landing. The pickup zone is this
@@ -366,9 +374,10 @@ func _physics_process(delta: float) -> void:
 				velocity -= radial * radial_speed
 			var tangent: Vector2 = Vector2(-radial.y, radial.x)
 			var tangent_diff: float = velocity.dot(tangent) - planet_velocity.dot(tangent)
-			# 50% per tick — snappy settle (~10 ticks to within 0.1%
-			# of planet velocity). Tune lower if it feels jittery.
-			velocity -= tangent * tangent_diff * 0.5
+			# Close `tangent_damping` of the gap each tick. 0.5 = snappy
+			# settle (~10 ticks to within 0.1% of planet velocity).
+			# Tune lower for more skid / higher for stickier landings.
+			velocity -= tangent * tangent_diff * tangent_damping
 
 			# Edge-triggered landing/crash: rel_speed threshold decides
 			# soft-land vs. over-speed crash on the FIRST tick of
