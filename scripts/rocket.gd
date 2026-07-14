@@ -301,6 +301,9 @@ func _physics_process(delta: float) -> void:
 					crashed_planet = nearest
 					crashed_offset = global_position - nearest.global_position
 					velocity = Vector2.ZERO
+					# Crash SFX: non-landable contact (sun, asteroid).
+					# Plays once — play_oneshot auto-frees the player on finished.
+					_audio_manager.play_rocket_crash()
 				elif rel_speed < landing_speed_threshold:
 					landed = true
 					landed_planet = nearest
@@ -338,6 +341,11 @@ func _physics_process(delta: float) -> void:
 					crashed_planet = nearest
 					crashed_offset = global_position - nearest.global_position
 					velocity = Vector2.ZERO
+					# Crash SFX: over-speed contact on a landable body (rel_speed
+					# ≥ landing_speed_threshold). Plays once per crash; the
+					# `if crashed: return` at the top of _physics_process
+					# prevents re-firing on subsequent frames.
+					_audio_manager.play_rocket_crash()
 
 	# --- Normal flight ---
 	var rot_dir := 0.0

@@ -14,6 +14,7 @@ const MUSIC_GAMEPLAY := "res://assets/sound/gamebackground.ogg"
 const SFX_THRUSTER := "res://assets/sound/thruster.ogg"
 const SFX_ASTRONAUT_PICKUP := "res://assets/sound/success_ding.ogg"
 const SFX_FUEL_PICKUP := "res://assets/sound/fuelbloop.ogg"
+const SFX_ROCKET_CRASH := "res://assets/sound/rocket_crash.ogg"
 
 var _music_player: AudioStreamPlayer
 var _thruster_player: AudioStreamPlayer
@@ -105,11 +106,28 @@ func stop_thruster() -> void:
 ## Play a one-shot SFX from `path`. Creates a fresh AudioStreamPlayer,
 ## connects its `finished` signal to queue_free so we don't leak nodes
 ## after each pickup sound. Routed to the "SFX" bus.
+##
+## Note on loop behavior: `.import` files for Ogg streams can declare
+## `loop=true` at the resource level (the thruster, fuel pickup, and
+## both music tracks all do — see `assets/sound/*.import`). The
+## `finished` signal only fires when the *stream* ends, which won't
+## happen on a looping stream — so without this override, an
+## imported `loop=true` stream played via `play_oneshot()` would
+## loop forever and never reach `queue_free`, leaking the player.
+## `assets/sound/fuelbloop.ogg` is the in-the-wild example: its
+## `.import` has `loop=true` (matching its filename — it's the loop
+## version of the asset), but it's used as a one-shot pickup cue.
+## Forcing `loop = false` after load makes `play_oneshot` honor its
+## name regardless of how the .import was authored. Same defensive
+## pattern `play_music()` uses in reverse (`stream.loop = true`).
 func play_oneshot(path: String) -> void:
 	var player: AudioStreamPlayer = AudioStreamPlayer.new()
 	player.bus = "SFX"
 	add_child(player)
 	player.stream = load(path)
+	# Force one-shot semantics regardless of the .import's loop setting
+	# — see the docstring above for the fuelbloop.ogg bug this prevents.
+	player.stream.loop = false
 	player.play()
 	# Auto-cleanup: free the player when the sound finishes. This avoids
 	# leaking AudioStreamPlayer nodes for each one-shot SFX.
@@ -124,3 +142,11 @@ func play_astronaut_pickup() -> void:
 ## Convenience: play the fuel-pickup loop sound.
 func play_fuel_pickup() -> void:
 	play_oneshot(SFX_FUEL_PICKUP)
+
+
+## Convenience: play the rocket-crash sound. One-shot — plays once
+## per call, no loop. Routed to the "SFX" bus via `play_oneshot`.
+## Called from `scripts/rocket.gd` at the moment of crash in both
+## the non-landable (sun, asteroid) and over-speed branches.
+func play_rocket_crash() -> void:
+	play_oneshot(SFX_ROCKET_CRASH)
