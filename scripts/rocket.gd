@@ -133,18 +133,21 @@ var velocity: Vector2 = Vector2.ZERO
 # been reopened in the editor after manual project.godot edits).
 @onready var _audio_manager: Node = get_node("/root/AudioManager")
 
-# True while the rocket is resting on a planet's surface (glued).
+# Informational: true while the rocket is currently in contact with a
+# landable body (i.e. sitting on a planet). Edge-triggered: set on
+# the first tick of contact with rel_speed < landing_speed_threshold,
+# cleared when contact ends. Read by level_controller.gd for the
+# win check; rocket.gd's own physics is continuous and doesn't gate
+# on this flag.
 var landed: bool = false
 
 # True once the rocket has crashed (frozen on the crashed_planet).
 var crashed: bool = false
 
-# Planet we're currently landed on. null when in flight.
+# Planet we're currently in contact with (informational). null when
+# in flight. level_controller.gd reads this for the home-planet
+# win check on landing.
 var landed_planet: Node2D = null
-
-# Position offset from landed_planet — kept constant each frame so we
-# "ride" the planet through its orbit while landed.
-var landed_offset: Vector2 = Vector2.ZERO
 
 # Planet we crashed into. null when in flight or landed.
 var crashed_planet: Node2D = null
@@ -235,12 +238,15 @@ func _process(delta: float) -> void:
 
 
 ## If a planet in the "attractors" group has `is_home = true`, place
-## the rocket landed on its surface in the direction of the planet's
-## motion (so the rocket is "riding" the planet). Sets landed /
-## landed_planet / landed_offset so the landed-glue logic in
-## _physics_process maintains the position every frame. If no is_home
-## planet is found, does nothing (scene's initial_position and
-## initial_velocity remain in effect).
+## the rocket on its surface in the direction of the planet's motion
+## (so the rocket is "riding" the planet at the home position).
+## Pre-sets `landed = true` so the first physics tick's edge-detection
+## sees the rocket as already on the planet and skips the spurious
+## landing event (otherwise the snap would auto-pickup any astronaut
+## on the home planet). Physics after this point is continuous — no
+## glue flag, no unstick threshold. If no is_home planet is found,
+## does nothing (scene's initial_position and initial_velocity remain
+## in effect).
 func _snap_to_home_planet() -> void:
 	for body in get_tree().get_nodes_in_group("attractors"):
 		if not body.get("is_home"):
@@ -258,15 +264,30 @@ func _snap_to_home_planet() -> void:
 		global_position = surface_pos
 		velocity = planet_vel
 		rotation = (global_position - planet_pos).angle()
+		# Pre-set landed + landed_planet so the first physics tick's
+		# edge-detection sees landed=true and doesn't fire a spurious
+		# landing event. With continuous physics, being in contact is
+		# the source of truth; landed just remembers it across frames.
 		landed = true
 		landed_planet = body
-		landed_offset = surface_pos - planet_pos
 		return
 
 
-## Per-tick update: time-warp input, audio gating, landed/launching
-## state glue, landing/crash detection, normal flight integration,
-## and fuel-pickup collection. Order matters — see comments inline.
+## Per-tick update: time-warp input, audio gating, contact physics
+## (normal force + tangent damping when in contact), landing/crash
+## edge events, normal flight integration, and fuel-pickup collection.
+## Order matters — see comments inline.
+##
+## Landing model (continuous-physics + edge-triggered-events):
+## Being in contact with a landable body is detected per-tick. The
+## physics response (position snap + radial velocity cancellation +
+## tangent damping) keeps the rocket on the surface while landed. The
+## `landed` flag is informational only — set/cleared on the in-flight
+## ↔ in-contact edge transitions, read by `level_controller.gd` for
+## the win check. Astronaut pickup and home delivery fire as edge
+## events on the FIRST tick of contact with a landable body. There
+## is no "break free" mechanic — the rocket lifts off whenever
+## applied thrust exceeds gravity.
 func _physics_process(delta: float) -> void:
 
 	# Time warp input. Handled at the top so it works regardless of
@@ -279,174 +300,108 @@ func _physics_process(delta: float) -> void:
 		Engine.time_scale = TIME_WARP_LEVELS[time_warp_index]
 
 	# Thruster audio: tracks the current `throttle` value. Called at the
-	# TOP (before the crashed early-return) so the audio reflects the
-	# current throttle every frame. The deadzone + play/stop logic lives
-	# in `AudioManager.set_thruster_volume` — rocket.gd just feeds it
-	# the throttle value. When crashed, throttle is forced to 0 in the
-	# crash branch below, so this call goes silent on the next frame.
+	# top so audio reflects current throttle every frame, including
+	# crashed frames (where throttle is 0). The deadzone + play/stop
+	# logic lives in `AudioManager.set_thruster_volume` — rocket.gd
+	# just feeds it the throttle value.
 	_audio_manager.set_thruster_volume(throttle)
 
-	# Crashed: freeze on the surface where we hit.
+	# Crashed: freeze on the surface where we hit. Once crashed, no
+	# further input or physics — the level_controller's lose check
+	# handles the scene transition.
 	if crashed:
 		if crashed_planet != null:
 			global_position = crashed_planet.global_position + crashed_offset
 		return
 
-	# Landed: glue to the planet; throttle above the deadzone unsticks us.
-	# (skill §4.1 — "return only on the stay branch; fall through on
-	# the exit branch" gate pattern. Without the fall-through, throttle
-	# wouldn't actually unstick + move on the same frame.)
-	if landed and landed_planet != null:
-		# Unstick only when `throttle` is enough to actually escape this
-		# planet's gravity. Without this gate, the rocket unsticks at
-		# the smallest throttle above the deadzone — on a heavy planet
-		# thrust can't overcome gravity at low throttle, the rocket
-		# falls straight back, re-lands (resetting throttle to 0), and
-		# the user can never accumulate enough to escape. Caught 2026-07-13.
-		#
-		# Threshold derived from `thrust_acceleration * throttle > G*M/r²`
-		# rearranged for throttle, with a 10% buffer so net acceleration
-		# is outward on the unstick tick. Capped at 1.0 so a planet too
-		# heavy to escape still unsticks at full throttle — the player
-		# then gets a visible "gravity wins" crash instead of an
-		# infinite re-landing loop.
-		var planet_mass: float = float(landed_planet.get("mass"))
-		var surface_dist: float = maxf(landed_offset.length(), 1.0)
-		var min_throttle: float = (G * planet_mass) / (surface_dist * surface_dist * thrust_acceleration) * 1.1
-		min_throttle = minf(min_throttle, 1.0)
-		if throttle >= min_throttle:
-			# Re-orient nose-outward BEFORE clearing landed_planet — we
-			# need the planet reference to compute the radial direction.
-			# Without this, a rocket spawned via `_snap_to_home_planet`
-			# would launch with its nose pointing along the orbit tangent
-			# (set there so the rocket "rides" the planet in its direction
-			# of motion). At tangent, thrust and gravity are perpendicular
-			# — thrust adds zero outward velocity, gravity still pulls
-			# inward, the radial-direction guard sees negative radial_speed
-			# next tick, and re-lands the rocket. Re-orienting to radial-
-			# outward here makes thrust and gravity collinear so the rocket
-			# can actually escape. For regular landings (not home-planet
-			# snap) the landing block already sets rotation to outward, so
-			# this is a no-op — only the home-snap path needs the fix.
-			rotation = (global_position - landed_planet.global_position).angle()
-			landed = false
-			landed_planet = null
-			# velocity stays matched to the planet (set on land); the
-			# physics below now runs and pushes us outward.
+	# Defensive: if landed_planet is invalid (freed, or stale), clear
+	# the landed state so level_controller doesn't read a null planet
+	# on the win check.
+	if landed and (landed_planet == null or not is_instance_valid(landed_planet)):
+		landed = false
+		landed_planet = null
+
+	# Contact detection: nearest attractor + distance check. Drives
+	# both the continuous-physics contact response (below) and the
+	# edge-triggered landing events.
+	var nearest := _find_nearest_attractor()
+	var in_contact := false
+	var contact_eff_r := 0.0
+	if nearest != null:
+		var planet_radius: float = float(nearest.get("radius")) * abs(nearest.global_scale.x)
+		# size * 0.8 matches the back-vertex offset in _make_triangle —
+		# the triangle is (s, 0), (-s*0.8, ±s*0.6), so the back vertex
+		# is 0.8·s behind the center. Keep these in sync.
+		var tail_reach: float = size * 0.8
+		contact_eff_r = planet_radius + tail_reach + landing_buffer
+		var dist: float = global_position.distance_to(nearest.global_position)
+		in_contact = (dist <= contact_eff_r)
+
+	if in_contact and nearest != null:
+		# In contact with nearest. Apply contact response + edge events.
+		var radial: Vector2 = (global_position - nearest.global_position).normalized()
+		var planet_velocity: Vector2 = Vector2(nearest.get("velocity"))
+		var rel_velocity: Vector2 = velocity - planet_velocity
+		var is_landable: bool = nearest.get("is_landable")
+
+		if not is_landable:
+			# Non-landable body (sun, asteroids). Instant crash on contact.
+			crashed = true
+			crashed_planet = nearest
+			crashed_offset = global_position - nearest.global_position
+			velocity = Vector2.ZERO
+			throttle = 0.0
+			_audio_manager.play_rocket_crash()
+			# No normal force, no settle — rocket is dead.
 		else:
-			global_position = landed_planet.global_position + landed_offset
-			velocity = Vector2(landed_planet.get("velocity"))
-			return
+			# Landable body. Apply continuous contact physics:
+			#   - Position snap to surface (avoid penetration)
+			#   - Cancel inward radial velocity (implicit ground normal)
+			#   - Damp tangent velocity toward planet's surface velocity
+			#     so the rocket settles into the planet's frame of ref
+			#     over a few ticks instead of sliding indefinitely.
+			global_position = nearest.global_position + radial * contact_eff_r
+			var radial_speed: float = rel_velocity.dot(radial)
+			if radial_speed < 0.0:
+				velocity -= radial * radial_speed
+			var tangent: Vector2 = Vector2(-radial.y, radial.x)
+			var tangent_diff: float = velocity.dot(tangent) - planet_velocity.dot(tangent)
+			# 50% per tick — snappy settle (~10 ticks to within 0.1%
+			# of planet velocity). Tune lower if it feels jittery.
+			velocity -= tangent * tangent_diff * 0.5
 
-	# Landing/crash detection: nearest attractor by distance. (skill §3.1
-	# — per-frame distance check, not Area2D signals. Avoids the trigger-
-	# radius mismatch of Area2D + CollisionShape2D vs. visual edges.)
-	if not landed and not crashed:
-		var nearest := _find_nearest_attractor()
-		if nearest != null:
-			# Visual radius of the planet's surface (radius × scale), then add
-			# the rocket's tail reach so the trigger fires when the tail is
-			# at the surface. `landing_buffer` is a small overshoot past that.
-			var planet_radius: float = float(nearest.get("radius")) * abs(nearest.global_scale.x)
-			# size * 0.8 matches the back-vertex offset in _make_triangle —
-			# the triangle is (s, 0), (-s*0.8, ±s*0.6), so the back vertex
-			# is 0.8·s behind the center. Keep these in sync.
-			var tail_reach: float = size * 0.8
-			var effective_radius: float = planet_radius + tail_reach + landing_buffer
-			var dist: float = global_position.distance_to(nearest.global_position)
-			if dist <= effective_radius:
-				var planet_velocity := Vector2(nearest.get("velocity"))
-				var rel_speed: float = (velocity - planet_velocity).length()
-				# Non-landable bodies (sun, future asteroids) crash on
-				# contact regardless of approach speed. `is_landable` is a
-				# per-body @export — planets default to true, sun sets false.
-				if nearest.get("is_landable") == false:
-					crashed = true
-					crashed_planet = nearest
-					crashed_offset = global_position - nearest.global_position
-					velocity = Vector2.ZERO
-					# Zero throttle on crash so the thruster audio silences
-					# on the next physics tick (set_thruster_volume reads it).
-					throttle = 0.0
-					# Crash SFX: non-landable contact (sun, asteroid).
-					# Plays once — play_oneshot auto-frees the player on finished.
-					_audio_manager.play_rocket_crash()
-				elif rel_speed < landing_speed_threshold:
-					# Radial-direction guard: only re-land if the rocket is
-					# moving inward (radial_speed < 0). At the unstick moment
-					# velocity == planet_velocity (no outward component), so a
-					# naïve `dist <= effective_radius AND rel_speed < threshold`
-					# re-glues the rocket on the same tick — even with throttle
-					# at min_throttle and net outward thrust > gravity, the
-					# rocket has zero outward velocity for ~1 tick, which is
-					# enough for the landing check to fire and reset throttle.
-					# Catches both bugs 2026-07-13:
-					#   1. Stuck-loop on heavy planets (couldn't accumulate
-					#      throttle because each unstick immediately re-landed)
-					#   2. Same stuck-loop on lighter planets (level_02 Venus)
-					# With this guard, an outward-moving rocket is recognized
-					# as "launching" and falls through to normal flight where
-					# thrust continues to apply. Tangent motion (radial = 0) is
-					# treated as launching too — gravity will pull it inward
-					# within a tick, at which point the next landing check
-					# will land it.
-					var radial: Vector2 = (global_position - nearest.global_position).normalized()
-					var rel_velocity := velocity - planet_velocity
-					var radial_speed: float = rel_velocity.dot(radial)
-					if radial_speed < 0.0:
-						landed = true
-						landed_planet = nearest
-						landed_offset = global_position - nearest.global_position
-						velocity = planet_velocity
-						# Reset throttle on landing — matches "can't thrust while
-						# landed" feel. Without this, the rocket would unstick
-						# on the very next physics tick because the pre-landing
-						# throttle value would still satisfy the unstick gate.
-						throttle = 0.0
-						# Auto-orient nose-outward so first thrust = launch.
-						# Without this, the rocket would still be pointing its
-						# arrival direction and would thrust tangentially.
-						rotation = (global_position - nearest.global_position).angle()
+			# Edge-triggered landing/crash: rel_speed threshold decides
+			# soft-land vs. over-speed crash on the FIRST tick of
+			# contact. After that, contact is sustained; the rocket
+			# sits on the surface via the normal force above until
+			# applied thrust exceeds gravity and lifts it off.
+			var rel_speed: float = rel_velocity.length()
+			if rel_speed < landing_speed_threshold:
+				if not landed:
+					# Edge: just landed. Informational flags set here;
+					# level_controller reads these for the win check.
+					landed = true
+					landed_planet = nearest
+					# Auto-orient nose-outward so thrust (when applied)
+					# points away from the planet — otherwise the
+					# default tangent orientation would just skid
+					# along the surface.
+					rotation = radial.angle()
+					_handle_landing_event(nearest)
+			else:
+				# Over-speed crash on a landable body.
+				crashed = true
+				crashed_planet = nearest
+				crashed_offset = global_position - nearest.global_position
+				velocity = Vector2.ZERO
+				throttle = 0.0
+				_audio_manager.play_rocket_crash()
+	elif landed:
+		# Was in contact last tick, no longer in contact. Take off.
+		landed = false
+		landed_planet = null
 
-						# Astronaut delivery (carrying on home planet) takes
-						# precedence over pickup. No delivery sound effect.
-						if carrying_astronaut and landed_planet.get("is_home"):
-							carrying_astronaut = false
-						else:
-							# Try to pick up an astronaut on this planet.
-							var astronaut := landed_planet.get_node_or_null("Astronaut")
-							if astronaut != null and not astronaut.get("picked_up"):
-								# Reuse the outer `planet_radius` (nearest.radius × scale),
-								# which is the astronaut's actual world distance
-								# from the planet center.
-								var pickup_radius: float = planet_radius * astronaut_pickup_radius_multiplier
-								var dist_to_astronaut: float = global_position.distance_to(astronaut.global_position)
-								if dist_to_astronaut <= pickup_radius:
-									astronaut.call("pick_up")
-									carrying_astronaut = true
-									picked_up_count += 1
-									# SFX now fires only on actual pickup (not whenever
-									# the rocket merely lands near an astronaut). Tightened
-									# per the existing TODO; the old "fires whenever we
-									# landed near" behavior was too noisy.
-									_audio_manager.play_astronaut_pickup()
-					# else: rocket is launching — fall through to normal flight,
-					# don't reset throttle, let the unstick actually stick.
-				else:
-					crashed = true
-					crashed_planet = nearest
-					crashed_offset = global_position - nearest.global_position
-					velocity = Vector2.ZERO
-					# Zero throttle on crash (same reason as the non-landable
-					# branch — silences the thruster on the next tick).
-					throttle = 0.0
-					# Crash SFX: over-speed contact on a landable body (rel_speed
-					# ≥ landing_speed_threshold). Plays once per crash; the
-					# `if crashed: return` at the top of _physics_process
-					# prevents re-firing on subsequent frames.
-					_audio_manager.play_rocket_crash()
-
-	# --- Normal flight ---
+	# --- Thrust + rotation (always runs, even when landed) ---
 	var rot_dir := 0.0
 	if Input.is_action_pressed("rotate_left"):
 		rot_dir -= 1.0
@@ -454,19 +409,19 @@ func _physics_process(delta: float) -> void:
 		rot_dir += 1.0
 	rotation += rot_dir * rotation_speed * delta
 
-	if throttle > THROTTLE_DEADZONE:
-		if fuel > 0.0:
-			# Both the acceleration and the fuel burn scale linearly with
-			# throttle, so partial throttle burns partial fuel — matches
-			# KSP's model and gives the player fine control over fuel
-			# economy on long burns. fuel_consumption_rate is now a
-			# "per-throttle-unit per second" rate.
-			fuel -= fuel_consumption_rate * throttle * delta
-			var forward := Vector2.RIGHT.rotated(rotation)
-			velocity += forward * thrust_acceleration * throttle * delta
+	if throttle > THROTTLE_DEADZONE and fuel > 0.0:
+		# Thrust scales linearly with throttle, so partial throttle
+		# burns partial fuel — matches KSP's model and gives the
+		# player fine control over fuel economy on long burns.
+		fuel -= fuel_consumption_rate * throttle * delta
+		var forward: Vector2 = Vector2.RIGHT.rotated(rotation)
+		velocity += forward * thrust_acceleration * throttle * delta
 
-	# Gravity from every attractor (sun + all planets). Skip self.
-	var total_accel := Vector2.ZERO
+	# Gravity from every attractor (sun + all planets + asteroids +
+	# moons). Cancelled each tick by the radial-velocity-cancel step
+	# above when in contact; otherwise accumulates normally so the
+	# rocket orbits / falls.
+	var total_accel: Vector2 = Vector2.ZERO
 	for body in get_tree().get_nodes_in_group("attractors"):
 		if body == self:
 			continue
@@ -475,8 +430,8 @@ func _physics_process(delta: float) -> void:
 		# Floor at 1.0 to avoid division-by-zero singularities when the
 		# rocket is exactly on top of an attractor (rare but possible
 		# during a teleport or scene reload).
-		var r := maxf(to_attractor.length(), 1.0)
-		var accel_mag := G * mass_value / (r * r)
+		var r: float = maxf(to_attractor.length(), 1.0)
+		var accel_mag: float = G * mass_value / (r * r)
 		total_accel += to_attractor.normalized() * accel_mag
 	velocity += total_accel * delta
 	position += velocity * delta
@@ -491,6 +446,43 @@ func _physics_process(delta: float) -> void:
 			fuel = minf(fuel + fuel_pickup_amount, max_fuel)
 			pickup.queue_free()
 			_audio_manager.play_fuel_pickup()
+
+
+## Edge-triggered landing event. Called from _physics_process on the
+## first tick of contact with a landable body. Handles astronaut
+## delivery + pickup; nothing else (crash/audio/state changes happen
+## in the caller).
+##
+## Brief-graze pickups: a one-tick graze at low speed on a planet
+## with an unpicked astronaut WILL fire pickup. Existing safeguards
+## (astronaut.picked_up check, carrying_astronaut check for delivery)
+## make spurious events no-ops in practice — picked_up astronauts
+## stay picked up, and delivery requires carrying. If spurious fires
+## become annoying in playtest, add a debounce here (require N
+## consecutive in-contact ticks before firing).
+func _handle_landing_event(planet: Node2D) -> void:
+	# Astronaut delivery (carrying on home planet) takes precedence
+	# over pickup. No delivery sound effect.
+	if carrying_astronaut and planet.get("is_home"):
+		carrying_astronaut = false
+		return
+
+	# Try to pick up an astronaut on this planet.
+	var astronaut: Node = planet.get_node_or_null("Astronaut")
+	if astronaut != null and not astronaut.get("picked_up"):
+		# Reuse the outer `planet_radius` (nearest.radius × scale),
+		# which is the astronaut's actual world distance from the
+		# planet center.
+		var planet_radius: float = float(planet.get("radius")) * abs(planet.global_scale.x)
+		var pickup_radius: float = planet_radius * astronaut_pickup_radius_multiplier
+		var dist_to_astronaut: float = global_position.distance_to(astronaut.global_position)
+		if dist_to_astronaut <= pickup_radius:
+			astronaut.call("pick_up")
+			carrying_astronaut = true
+			picked_up_count += 1
+			# SFX fires only on actual pickup (not whenever the rocket
+			# merely lands near an astronaut).
+			_audio_manager.play_astronaut_pickup()
 
 
 ## Handle the restart key (R) — reloads the current scene. Rocket state,
