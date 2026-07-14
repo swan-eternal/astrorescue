@@ -29,10 +29,18 @@ const SECTION := "visual"
 # via Settings → Visual when they want it.
 const DEFAULT_SHOW_SOI: bool = false
 
+# Default for `vignette_intensity` — how much the post-processing
+# shader darkens the screen corners. 0 = no effect (passthrough),
+# 1 = strong vignette (corners near black). 0.3 = subtle: visible
+# without being in-your-face. Driven by the VisualTab slider in
+# Settings → Visual, which persists the value via set_vignette_intensity.
+const DEFAULT_VIGNETTE_INTENSITY: float = 0.3
+
 
 # Internal state. Adding a new visual toggle = add a field here + a
 # `get_*` / `set_*` accessor pair below.
 var _show_soi: bool = DEFAULT_SHOW_SOI
+var _vignette_intensity: float = DEFAULT_VIGNETTE_INTENSITY
 
 
 ## Load persisted settings (if any). Missing file = defaults.
@@ -55,6 +63,24 @@ func set_show_soi(value: bool) -> void:
 	_save_to_disk()
 
 
+## Public API: get the current `vignette_intensity` value.
+## Read by scripts/post_processing_layer.gd (which pushes it into
+## the shader uniform each frame the value changes) and by
+## scripts/visual_tab.gd (which renders the slider position).
+func get_vignette_intensity() -> float:
+	return _vignette_intensity
+
+
+## Public API: set `vignette_intensity`, persist immediately. Clamped
+## to [0.0, 1.0] defensively — out-of-range values from a buggy
+## caller could produce ugly shader artifacts. Same per-frame-poll
+## consumption pattern as `show_soi` — the shader script reads this
+## next frame, no signal wiring needed.
+func set_vignette_intensity(value: float) -> void:
+	_vignette_intensity = clampf(value, 0.0, 1.0)
+	_save_to_disk()
+
+
 # --- internals ---
 
 
@@ -68,11 +94,14 @@ func _load_from_disk() -> void:
 		return
 	if cfg.has_section_key(SECTION, "show_soi"):
 		_show_soi = bool(cfg.get_value(SECTION, "show_soi", DEFAULT_SHOW_SOI))
+	if cfg.has_section_key(SECTION, "vignette_intensity"):
+		_vignette_intensity = float(cfg.get_value(SECTION, "vignette_intensity", DEFAULT_VIGNETTE_INTENSITY))
 
 
 func _save_to_disk() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value(SECTION, "show_soi", _show_soi)
+	cfg.set_value(SECTION, "vignette_intensity", _vignette_intensity)
 	var err := cfg.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("VisualSettings: could not save %s (err %d)." % [SETTINGS_PATH, err])

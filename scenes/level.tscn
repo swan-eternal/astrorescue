@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/pause_menu.gd" id="6_pause"]
 [ext_resource type="Script" path="res://scripts/soi_indicator.gd" id="7_soi"]
 [ext_resource type="Script" path="res://scripts/home_planet_indicator.gd" id="8_home"]
+[ext_resource type="PackedScene" path="res://scenes/post_processing_layer.tscn" id="9_postproc"]
 
 [node name="level" type="Node2D"]
 
@@ -37,3 +38,5 @@ script = ExtResource("5_loader")
 
 [node name="PauseMenu" type="CanvasLayer" parent="."]
 script = ExtResource("6_pause")
+
+[node name="PostProcessingLayer" parent="." instance=ExtResource("9_postproc")]

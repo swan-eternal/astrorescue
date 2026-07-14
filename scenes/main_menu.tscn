@@ -4,6 +4,7 @@
 [ext_resource type="Texture2D" uid="uid://c52sbnxytf3p2" path="res://assets/images/astrorescue-logo.png" id="2_logo"]
 [ext_resource type="Texture2D" uid="uid://c87k8t1kr672j" path="res://assets/images/instructionPage1.png" id="3_page1"]
 [ext_resource type="Script" path="res://scripts/menu_background.gd" id="4_bg"]
+[ext_resource type="PackedScene" path="res://scenes/post_processing_layer.tscn" id="5_postproc"]
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -112,6 +113,8 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="PostProcessingLayer" parent="." instance=ExtResource("5_postproc")]
 
 [node name="VBoxContainer" type="VBoxContainer" parent="HowToPlayPanel"]
 layout_mode = 1
