@@ -11,7 +11,7 @@ class_name PhysicsConstants
 ## gravity, lower = floatier feel. Was 1.0 historically; if you change
 ## this, planet masses / velocities in the level data will need
 ## re-tuning (the existing level JSON was designed for G = 1.0).
-const G: float = 1.0
+const G: float = 0.8
 
 ## Floor for distance in gravity / orbit calculations to avoid
 ## division-by-zero when a body is exactly at the central mass

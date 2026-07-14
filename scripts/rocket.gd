@@ -83,7 +83,7 @@ const THROTTLE_DEADZONE := 0.001
 
 ## Maximum relative speed for a contact to count as "soft" (else crash).
 ## At rel_speed ≤ this on contact, the rocket sticks; > this, it crashes.
-@export var landing_speed_threshold: float = 60.0
+@export var landing_speed_threshold: float = 80.0
 
 ## Extra distance past the visual contact point at which the landing
 ## trigger fires. Small overshoot so the rocket doesn't appear to
@@ -93,7 +93,7 @@ const THROTTLE_DEADZONE := 0.001
 ## Minimum relative speed for a contact to count as a crash. Anything
 ## in the gap (landing_speed_threshold, crash_speed_threshold) lands
 ## as a crash because it's too fast to be safe.
-@export var crash_speed_threshold: float = 80.0
+@export var crash_speed_threshold: float = 90.0
 
 ## Fraction of the tangent-velocity mismatch (rocket vs. planet)
 ## closed each physics tick while in contact with a landable body.
