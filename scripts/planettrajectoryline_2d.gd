@@ -40,13 +40,11 @@ extends Line2D
 ## markers that would crowd the screen edge.
 @export var time_marker_margin: float = 0.0
 
-# Universal gravitational constant for this script (matches planet.gd
-# and the rocket/trajectory scripts — keep them in sync).
-const G := 1.0
+# Local alias for the project-wide gravity constant (PhysicsConstants.G).
+const G: float = PhysicsConstants.G
 
-# Floor used to avoid division by zero when r is very small (e.g., the
-# planet is exactly at the sun, which would be a degenerate orbit anyway).
-const MIN_DIST := 1.0
+# Local alias for the gravity / orbit distance floor (PhysicsConstants.MIN_DIST).
+const MIN_DIST: float = PhysicsConstants.MIN_DIST
 
 const TimeMarkerScene: PackedScene = preload("res://scenes/time_marker.tscn")
 

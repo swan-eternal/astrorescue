@@ -88,9 +88,8 @@ extends Node2D
 ## doesn't tug the rocket much.
 @export var mass: float = 10000.0
 
-# Universal gravitational constant for this script (matches rocket.gd
-# and the trajectory scripts — keep them in sync).
-const G := 1.0
+# Local alias for the project-wide gravity constant (PhysicsConstants.G).
+const G: float = PhysicsConstants.G
 
 const AstronautScene := preload("res://scenes/astronaut.tscn")
 const FuelPickupScene := preload("res://scenes/fuel_pickup.tscn")

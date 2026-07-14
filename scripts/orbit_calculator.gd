@@ -13,14 +13,11 @@ class_name OrbitCalculator
 ## Used by planet.gd (and future moon.gd, asteroid.gd) to compute body
 ## positions each frame from prescribed orbital elements.
 
-# Universal gravitational constant for this project. Matches planet.gd,
-# rocket.gd, and the trajectory predictor scripts — keep them in sync.
-const G: float = 1.0
+# Local alias for the project-wide gravity constant (PhysicsConstants.G).
+const G: float = PhysicsConstants.G
 
-# Floor for distance in velocity calculation to avoid division-by-zero
-# when the body is exactly at the central mass (degenerate but possible
-# during a scene reload or teleport).
-const MIN_DIST: float = 1.0
+# Local alias for the gravity / orbit distance floor (PhysicsConstants.MIN_DIST).
+const MIN_DIST: float = PhysicsConstants.MIN_DIST
 
 # Default Hill-sphere fraction for Sphere-of-Influence detection. Match
 # the project's existing convention of 0.5 — the inner half of the Hill

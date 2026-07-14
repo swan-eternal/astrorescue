@@ -124,8 +124,12 @@ const THROTTLE_DEADZONE := 0.001
 ## In world units.
 @export var fuel_pickup_radius: float = 30.0
 
-# --- Physics constants (matches planet.gd and the trajectory predictor) ---
-const G := 1.0
+# --- Physics constants ---
+# Local alias for the project-wide gravity constant (PhysicsConstants.G).
+const G: float = PhysicsConstants.G
+
+# Local alias for the gravity-loop distance floor (PhysicsConstants.MIN_DIST).
+const MIN_DIST: float = PhysicsConstants.MIN_DIST
 
 # --- Runtime state ---
 
@@ -437,9 +441,7 @@ func _physics_process(delta: float) -> void:
 		var mass_value: float = float(body.get("mass"))
 		var to_attractor: Vector2 = body.global_position - global_position
 		# Floor at 1.0 to avoid division-by-zero singularities when the
-		# rocket is exactly on top of an attractor (rare but possible
-		# during a teleport or scene reload).
-		var r: float = maxf(to_attractor.length(), 1.0)
+		var r: float = maxf(to_attractor.length(), MIN_DIST)
 		var accel_mag: float = G * mass_value / (r * r)
 		total_accel += to_attractor.normalized() * accel_mag
 	velocity += total_accel * delta

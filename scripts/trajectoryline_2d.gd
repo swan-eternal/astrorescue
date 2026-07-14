@@ -118,13 +118,11 @@ enum Mode { ELLIPSE, PROJECTED }
 @export var time_marker_count: int = 3
 
 
-# Universal gravitational constant for this script (matches planet.gd
-# and the rocket — keep them in sync).
-const G: float = 1.0
+# Local alias for the project-wide gravity constant (PhysicsConstants.G).
+const G: float = PhysicsConstants.G
 
-# Floor for distance in gravity calculations to avoid division-by-zero
-# in degenerate cases (e.g., the rocket exactly on the sun).
-const MIN_DIST: float = 1.0
+# Local alias for the gravity / orbit distance floor (PhysicsConstants.MIN_DIST).
+const MIN_DIST: float = PhysicsConstants.MIN_DIST
 
 const TimeMarkerScene: PackedScene = preload("res://scenes/time_marker.tscn")
 

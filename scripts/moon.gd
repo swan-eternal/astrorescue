@@ -101,9 +101,8 @@ extends Node2D
 @export var fuel_orbit_speed: float = 0.5
 
 
-# Universal gravitational constant. Matches orbit_calculator.gd and other
-# body scripts — keep in sync.
-const G: float = 1.0
+# Local alias for the project-wide gravity constant (PhysicsConstants.G).
+const G: float = PhysicsConstants.G
 
 
 const AstronautScene := preload("res://scenes/astronaut.tscn")
