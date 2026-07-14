@@ -56,9 +56,28 @@ extends Node2D
 ## second. 3.0 ≈ half-turn per second — increase for snappier ships.
 @export var rotation_speed: float = 3.0
 
-## Thrust acceleration when W/Up is held, along the rocket's nose.
-## In units per second².
-@export var thrust_acceleration: float = 60.0
+## Thrust acceleration at full throttle, along the rocket's nose.
+## In units per second². With the variable-thrust system, this is the
+## force applied at `throttle = 1.0` — actual thrust scales linearly
+## with the current `throttle` value.
+@export var thrust_acceleration: float = 200.0
+
+## Current throttle level in [0.0, 1.0]. 0 = idle (no thrust), 1 = full
+## thrust. Ramps up/down via Shift/Ctrl input (handled in _process so
+## the rate is in real seconds, not scaled by Engine.time_scale).
+## Snaps to 0 on landing or crash. The thruster audio volume and the
+## HUD throttle bar both read this value.
+@export var throttle: float = 0.0
+
+## How fast `throttle` changes per real-second when Shift/Ctrl is held.
+## 0.5 = full sweep in 2 seconds (KSP-ish feel). Higher = snappier.
+@export var throttle_change_rate: float = 0.5
+
+## Threshold below which throttle is treated as "off" — gates the
+## "unstick from landed" check and the audio deadzone. Matches
+## AudioManager.THRUSTER_DEADZONE so behavior is consistent across
+## the rocket ↔ audio boundary.
+const THROTTLE_DEADZONE := 0.001
 
 # --- Collision (skill §3.1: distance-based, not Area2D signals) ---
 
@@ -183,20 +202,36 @@ func _ready() -> void:
 	call_deferred("_snap_to_home_planet")
 
 
-## Each frame: scale the visual polygon based on camera zoom so the
-## rocket stays readable at any zoom level. Visual only — physics
-## and collision use the underlying `size` directly.
-func _process(_delta: float) -> void:
-	# Same convention as trajectoryline_2d.gd: zoom_factor in [0.1, 1.0],
-	# where lower = more zoomed-out (objects smaller on screen) and
-	# 1.0 = the upper edge of the clamp (zoomed in past 1.0, the
-	# rocket is already plenty big, so we don't keep scaling up).
+## Each frame: scale the visual polygon based on camera zoom + handle
+## throttle input. Throttle input lives in _process (not _physics_process)
+## so the ramp rate is in real seconds — `delta` here doesn't scale with
+## Engine.time_scale, so 32× time warp doesn't make the throttle 32×
+## faster to respond. Visual scale and input are unrelated, but both
+## are render-rate work so they share the function.
+func _process(delta: float) -> void:
+	# Visual scale: same convention as trajectoryline_2d.gd: zoom_factor
+	# in [0.1, 1.0], where lower = more zoomed-out (objects smaller on
+	# screen) and 1.0 = the upper edge of the clamp (zoomed in past 1.0,
+	# the rocket is already plenty big, so we don't keep scaling up).
 	var cam := get_viewport().get_camera_2d()
 	var zoom_factor: float = clampf(cam.zoom.x, 0.1, 1.0) if cam != null else 1.0
 	# Divide min_visual_scale by zoom_factor so on-screen size stays
 	# constant across zooms. With min_visual_scale = 1.5 and size = 10,
 	# the rocket is roughly 30 px wide at any zoom in [0.1, 1.0].
 	_poly.scale = Vector2.ONE * (min_visual_scale / zoom_factor)
+
+	# Throttle input. Skipped when crashed — once the rocket is dead,
+	# the throttle bar is hidden (hud.gd) and the value is frozen at 0
+	# (set by the crash branch in _physics_process). Letting the user
+	# shift up while crashed would be confusing.
+	if crashed:
+		return
+	if Input.is_action_pressed("thrust_up"):
+		throttle = minf(throttle + throttle_change_rate * delta, 1.0)
+	if Input.is_action_pressed("thrust_down"):
+		throttle = maxf(throttle - throttle_change_rate * delta, 0.0)
+	if Input.is_action_just_pressed("thrust_kill"):
+		throttle = 0.0
 
 
 ## If a planet in the "attractors" group has `is_home = true`, place
@@ -243,28 +278,57 @@ func _physics_process(delta: float) -> void:
 		time_warp_index = max(time_warp_index - 1, 0)
 		Engine.time_scale = TIME_WARP_LEVELS[time_warp_index]
 
+	# Thruster audio: tracks the current `throttle` value. Called at the
+	# TOP (before the crashed early-return) so the audio reflects the
+	# current throttle every frame. The deadzone + play/stop logic lives
+	# in `AudioManager.set_thruster_volume` — rocket.gd just feeds it
+	# the throttle value. When crashed, throttle is forced to 0 in the
+	# crash branch below, so this call goes silent on the next frame.
+	_audio_manager.set_thruster_volume(throttle)
+
 	# Crashed: freeze on the surface where we hit.
 	if crashed:
 		if crashed_planet != null:
 			global_position = crashed_planet.global_position + crashed_offset
 		return
 
-	# Thruster audio: plays while the user is holding thrust AND has fuel.
-	# Stops on release, when fuel hits 0, or when crashed. Checked here
-	# (before the crashed/landed early-returns) so the sound stops even
-	# if the rocket is dead, and starts correctly when un-sticking from
-	# a planet.
-	if not crashed and Input.is_action_pressed("thrust") and fuel > 0.0:
-		_audio_manager.start_thruster()
-	else:
-		_audio_manager.stop_thruster()
-
-	# Landed: glue to the planet; thrust unsticks us. (skill §4.1 —
-	# "return only on the stay branch; fall through on the exit branch"
-	# gate pattern. Without the fall-through, thrust wouldn't actually
-	# unstick + move on the same frame.)
+	# Landed: glue to the planet; throttle above the deadzone unsticks us.
+	# (skill §4.1 — "return only on the stay branch; fall through on
+	# the exit branch" gate pattern. Without the fall-through, throttle
+	# wouldn't actually unstick + move on the same frame.)
 	if landed and landed_planet != null:
-		if Input.is_action_pressed("thrust"):
+		# Unstick only when `throttle` is enough to actually escape this
+		# planet's gravity. Without this gate, the rocket unsticks at
+		# the smallest throttle above the deadzone — on a heavy planet
+		# thrust can't overcome gravity at low throttle, the rocket
+		# falls straight back, re-lands (resetting throttle to 0), and
+		# the user can never accumulate enough to escape. Caught 2026-07-13.
+		#
+		# Threshold derived from `thrust_acceleration * throttle > G*M/r²`
+		# rearranged for throttle, with a 10% buffer so net acceleration
+		# is outward on the unstick tick. Capped at 1.0 so a planet too
+		# heavy to escape still unsticks at full throttle — the player
+		# then gets a visible "gravity wins" crash instead of an
+		# infinite re-landing loop.
+		var planet_mass: float = float(landed_planet.get("mass"))
+		var surface_dist: float = maxf(landed_offset.length(), 1.0)
+		var min_throttle: float = (G * planet_mass) / (surface_dist * surface_dist * thrust_acceleration) * 1.1
+		min_throttle = minf(min_throttle, 1.0)
+		if throttle >= min_throttle:
+			# Re-orient nose-outward BEFORE clearing landed_planet — we
+			# need the planet reference to compute the radial direction.
+			# Without this, a rocket spawned via `_snap_to_home_planet`
+			# would launch with its nose pointing along the orbit tangent
+			# (set there so the rocket "rides" the planet in its direction
+			# of motion). At tangent, thrust and gravity are perpendicular
+			# — thrust adds zero outward velocity, gravity still pulls
+			# inward, the radial-direction guard sees negative radial_speed
+			# next tick, and re-lands the rocket. Re-orienting to radial-
+			# outward here makes thrust and gravity collinear so the rocket
+			# can actually escape. For regular landings (not home-planet
+			# snap) the landing block already sets rotation to outward, so
+			# this is a no-op — only the home-snap path needs the fix.
+			rotation = (global_position - landed_planet.global_position).angle()
 			landed = false
 			landed_planet = null
 			# velocity stays matched to the planet (set on land); the
@@ -301,46 +365,81 @@ func _physics_process(delta: float) -> void:
 					crashed_planet = nearest
 					crashed_offset = global_position - nearest.global_position
 					velocity = Vector2.ZERO
+					# Zero throttle on crash so the thruster audio silences
+					# on the next physics tick (set_thruster_volume reads it).
+					throttle = 0.0
 					# Crash SFX: non-landable contact (sun, asteroid).
 					# Plays once — play_oneshot auto-frees the player on finished.
 					_audio_manager.play_rocket_crash()
 				elif rel_speed < landing_speed_threshold:
-					landed = true
-					landed_planet = nearest
-					landed_offset = global_position - nearest.global_position
-					velocity = planet_velocity
-					# Auto-orient nose-outward so first thrust = launch.
-					# Without this, the rocket would still be pointing its
-					# arrival direction and would thrust tangentially.
-					rotation = (global_position - nearest.global_position).angle()
+					# Radial-direction guard: only re-land if the rocket is
+					# moving inward (radial_speed < 0). At the unstick moment
+					# velocity == planet_velocity (no outward component), so a
+					# naïve `dist <= effective_radius AND rel_speed < threshold`
+					# re-glues the rocket on the same tick — even with throttle
+					# at min_throttle and net outward thrust > gravity, the
+					# rocket has zero outward velocity for ~1 tick, which is
+					# enough for the landing check to fire and reset throttle.
+					# Catches both bugs 2026-07-13:
+					#   1. Stuck-loop on heavy planets (couldn't accumulate
+					#      throttle because each unstick immediately re-landed)
+					#   2. Same stuck-loop on lighter planets (level_02 Venus)
+					# With this guard, an outward-moving rocket is recognized
+					# as "launching" and falls through to normal flight where
+					# thrust continues to apply. Tangent motion (radial = 0) is
+					# treated as launching too — gravity will pull it inward
+					# within a tick, at which point the next landing check
+					# will land it.
+					var radial: Vector2 = (global_position - nearest.global_position).normalized()
+					var rel_velocity := velocity - planet_velocity
+					var radial_speed: float = rel_velocity.dot(radial)
+					if radial_speed < 0.0:
+						landed = true
+						landed_planet = nearest
+						landed_offset = global_position - nearest.global_position
+						velocity = planet_velocity
+						# Reset throttle on landing — matches "can't thrust while
+						# landed" feel. Without this, the rocket would unstick
+						# on the very next physics tick because the pre-landing
+						# throttle value would still satisfy the unstick gate.
+						throttle = 0.0
+						# Auto-orient nose-outward so first thrust = launch.
+						# Without this, the rocket would still be pointing its
+						# arrival direction and would thrust tangentially.
+						rotation = (global_position - nearest.global_position).angle()
 
-					# Astronaut delivery (carrying on home planet) takes
-					# precedence over pickup. No delivery sound effect.
-					if carrying_astronaut and landed_planet.get("is_home"):
-						carrying_astronaut = false
-					else:
-						# Try to pick up an astronaut on this planet.
-						var astronaut := landed_planet.get_node_or_null("Astronaut")
-						if astronaut != null and not astronaut.get("picked_up"):
-							# Reuse the outer `planet_radius` (nearest.radius × scale),
-							# which is the astronaut's actual world distance
-							# from the planet center.
-							var pickup_radius: float = planet_radius * astronaut_pickup_radius_multiplier
-							var dist_to_astronaut: float = global_position.distance_to(astronaut.global_position)
-							if dist_to_astronaut <= pickup_radius:
-								astronaut.call("pick_up")
-								carrying_astronaut = true
-								picked_up_count += 1
-								# SFX now fires only on actual pickup (not whenever
-								# the rocket merely lands near an astronaut). Tightened
-								# per the existing TODO; the old "fires whenever we
-								# landed near" behavior was too noisy.
-								_audio_manager.play_astronaut_pickup()
+						# Astronaut delivery (carrying on home planet) takes
+						# precedence over pickup. No delivery sound effect.
+						if carrying_astronaut and landed_planet.get("is_home"):
+							carrying_astronaut = false
+						else:
+							# Try to pick up an astronaut on this planet.
+							var astronaut := landed_planet.get_node_or_null("Astronaut")
+							if astronaut != null and not astronaut.get("picked_up"):
+								# Reuse the outer `planet_radius` (nearest.radius × scale),
+								# which is the astronaut's actual world distance
+								# from the planet center.
+								var pickup_radius: float = planet_radius * astronaut_pickup_radius_multiplier
+								var dist_to_astronaut: float = global_position.distance_to(astronaut.global_position)
+								if dist_to_astronaut <= pickup_radius:
+									astronaut.call("pick_up")
+									carrying_astronaut = true
+									picked_up_count += 1
+									# SFX now fires only on actual pickup (not whenever
+									# the rocket merely lands near an astronaut). Tightened
+									# per the existing TODO; the old "fires whenever we
+									# landed near" behavior was too noisy.
+									_audio_manager.play_astronaut_pickup()
+					# else: rocket is launching — fall through to normal flight,
+					# don't reset throttle, let the unstick actually stick.
 				else:
 					crashed = true
 					crashed_planet = nearest
 					crashed_offset = global_position - nearest.global_position
 					velocity = Vector2.ZERO
+					# Zero throttle on crash (same reason as the non-landable
+					# branch — silences the thruster on the next tick).
+					throttle = 0.0
 					# Crash SFX: over-speed contact on a landable body (rel_speed
 					# ≥ landing_speed_threshold). Plays once per crash; the
 					# `if crashed: return` at the top of _physics_process
@@ -355,11 +454,16 @@ func _physics_process(delta: float) -> void:
 		rot_dir += 1.0
 	rotation += rot_dir * rotation_speed * delta
 
-	if Input.is_action_pressed("thrust"):
+	if throttle > THROTTLE_DEADZONE:
 		if fuel > 0.0:
-			fuel -= fuel_consumption_rate * delta
+			# Both the acceleration and the fuel burn scale linearly with
+			# throttle, so partial throttle burns partial fuel — matches
+			# KSP's model and gives the player fine control over fuel
+			# economy on long burns. fuel_consumption_rate is now a
+			# "per-throttle-unit per second" rate.
+			fuel -= fuel_consumption_rate * throttle * delta
 			var forward := Vector2.RIGHT.rotated(rotation)
-			velocity += forward * thrust_acceleration * delta
+			velocity += forward * thrust_acceleration * throttle * delta
 
 	# Gravity from every attractor (sun + all planets). Skip self.
 	var total_accel := Vector2.ZERO

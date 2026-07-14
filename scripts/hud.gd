@@ -9,6 +9,7 @@ extends CanvasLayer
 @onready var camera_label: Label = $MarginContainer/HBoxContainer/VBoxContainer/CameraLabel
 @onready var astronaut_label: Label = $MarginContainer/HBoxContainer/VBoxContainer/AstronautLabel
 @onready var time_warp_label: Label = $MarginContainer/HBoxContainer/VBoxContainer/TimeWarpLabel
+@onready var throttle_bar: ProgressBar = $MarginContainer/HBoxContainer/ThrottleBar
 
 
 var rocket: Node2D = null
@@ -118,6 +119,14 @@ func _process(_delta: float) -> void:
 
 	# Time warp level (reads Engine.time_scale directly; rocket updates it).
 	time_warp_label.text = "Time warp [< >]: %dx" % int(Engine.time_scale)
+
+	# Throttle bar: tracks rocket.throttle each frame. Hidden on crash
+	# so the gauge disappears with the rocket (rocket.gd forces throttle
+	# to 0 on crash, so a non-hidden bar would show 0 — but hiding
+	# reinforces the "rocket is dead" state for the player).
+	var throttle: float = float(rocket.get("throttle"))
+	throttle_bar.value = throttle
+	throttle_bar.visible = not bool(rocket.get("crashed"))
 
 	# Astronaut indicators: ● picked, ○ unpicked. Total is discovered at startup.
 	if total_astronauts > 0:

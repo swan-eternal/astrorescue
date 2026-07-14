@@ -23,7 +23,8 @@ var _thruster_player: AudioStreamPlayer
 ## Create the persistent AudioStreamPlayers: one for music (swapped
 ## per scene) and one for the looping thruster SFX. The thruster
 ## player is created here and lives for the whole game — that's how
-## the loop stays seamless when start_thruster() is called.
+## the loop stays seamless when set_thruster_volume() ramps volume
+## up and down across the throttle range.
 func _ready() -> void:
 	# Music player: one stream at a time, swapped when the scene changes.
 	# Routed to the "Music" bus so the music volume slider only affects
@@ -32,14 +33,22 @@ func _ready() -> void:
 	_music_player.bus = "Music"
 	add_child(_music_player)
 
-	# Thruster player: long-lived so the loop is seamless. The thruster.ogg
-	# stream is loaded with loop=true (set in its .import file) so the sound
-	# sustains as long as start_thruster() has been called. Routed to
-	# the "SFX" bus.
+	# Thruster player: long-lived so the loop is seamless across the
+	# variable-throttle ramp. The thruster.ogg stream is loaded with
+	# loop=true (set in its .import file) so the sound sustains as long
+	# as set_thruster_volume() keeps volume above the deadzone. Routed
+	# to the "SFX" bus so the audio settings menu's SFX slider applies
+	# on top of the per-player volume.
 	_thruster_player = AudioStreamPlayer.new()
 	_thruster_player.bus = "SFX"
 	var thruster_stream: AudioStream = load(SFX_THRUSTER)
 	_thruster_player.stream = thruster_stream
+	# Start silent — at the deadzone. Without this, the player's default
+	# volume_db = 0 would play the thruster at full volume on level load
+	# until rocket.gd's first set_thruster_volume(0.0) call fires. The
+	# set_thruster_volume() helper handles starting playback once throttle
+	# ramps above the deadzone.
+	_thruster_player.volume_db = -80.0
 	add_child(_thruster_player)
 
 
@@ -87,18 +96,42 @@ func stop_music() -> void:
 	_music_player.stop()
 
 
-# --- Thruster (looping SFX) ---
+# --- Thruster (variable-volume looping SFX) ---
 
-## Start the thruster loop if it isn't already playing. Idempotent —
-## safe to call every frame from rocket.gd without restarting the sound.
-func start_thruster() -> void:
+## Set the thruster's playback volume to `volume` in [0.0, 1.0].
+## Maps the rocket's current throttle to a perceptual loudness curve.
+##
+## Below the deadzone (≤ 0.001) the player is explicitly stopped to
+## avoid sub-audible hiss at -60dB and free the audio thread when
+## idle. The player object itself persists in the tree, so resuming
+## just calls play() again — no reallocation cost.
+##
+## Above the deadzone the player is ensured to be playing and its
+## volume_db is set via `linear_to_db(volume)` — perceptual scaling,
+## so doubling `volume` roughly doubles perceived loudness. (Doubling
+## amplitude in linear units is a +6dB change, which is the threshold
+## of perceived "twice as loud" for most listeners.)
+##
+## Called every physics tick from rocket.gd with the current throttle
+## value, so the audio tracks the throttle bar visually.
+##
+## The thruster stream is on the SFX bus, so the audio settings menu's
+## SFX volume slider still applies on top of this per-player volume.
+## `linear_to_db(1.0) = 0dB`, matching the thruster's pre-throttle
+## default — so at full throttle the perceived loudness is unchanged
+## from before this feature landed.
+const THRUSTER_DEADZONE := 0.001
+
+func set_thruster_volume(volume: float) -> void:
+	var v: float = clampf(volume, 0.0, 1.0)
+	if v <= THRUSTER_DEADZONE:
+		# Below threshold — explicit stop. Player object stays in tree
+		# so we don't pay the create-cost again when throttle ramps back up.
+		_thruster_player.stop()
+		return
 	if not _thruster_player.playing:
 		_thruster_player.play()
-
-
-## Stop the thruster loop. Idempotent — safe to call when already stopped.
-func stop_thruster() -> void:
-	_thruster_player.stop()
+	_thruster_player.volume_db = linear_to_db(v)
 
 
 # --- One-shot SFX (astronaut/fuel pickup) ---

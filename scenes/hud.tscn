@@ -60,6 +60,16 @@ layout_mode = 2
 [node name="TimeWarpLabel" type="Label" parent="MarginContainer/HBoxContainer/VBoxContainer" unique_id=2222222222]
 layout_mode = 2
 
+[node name="ThrottleBar" type="ProgressBar" parent="MarginContainer/HBoxContainer" unique_id=3333333333]
+custom_minimum_size = Vector2(24, 120)
+layout_mode = 2
+size_flags_vertical = 4
+max_value = 1.0
+value = 0.0
+step = 0.0
+show_percentage = false
+fill_mode = 3
+
 [node name="AstronautIndicators" type="Control" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
