@@ -2,10 +2,16 @@
 
 [ext_resource type="Script" uid="uid://dselcaxc16ldp" path="res://scripts/sunpolygon_2d.gd" id="1_cojbh"]
 [ext_resource type="Script" uid="uid://wjs7p47pcc03" path="res://scripts/sun.gd" id="1_fdjia"]
+[ext_resource type="Script" path="res://scripts/halo.gd" id="3_halo"]
 
 [node name="sun" type="Node2D" unique_id=2095028050]
 script = ExtResource("1_fdjia")
 metadata/_edit_group_ = true
+
+[node name="Halo" type="Sprite2D" parent="."]
+script = ExtResource("3_halo")
+halo_radius_factor = 3.0
+halo_alpha = 0.22
 
 [node name="Polygon2D" type="Polygon2D" parent="." unique_id=1320962934]
 color = Color(1, 1, 0.13333334, 1)
