@@ -4,39 +4,39 @@
 [ext_resource type="PackedScene" uid="uid://ccvxn8vitnrvf" path="res://scenes/rocket.tscn" id="2_rocket"]
 [ext_resource type="PackedScene" uid="uid://f287r1g8xsim" path="res://scenes/hud.tscn" id="3_hud"]
 [ext_resource type="Script" uid="uid://cqatk6q3c3jym" path="res://scripts/rocket_camera.gd" id="4_rcam"]
-[ext_resource type="Script" path="res://scripts/level_loader.gd" id="5_loader"]
-[ext_resource type="Script" path="res://scripts/pause_menu.gd" id="6_pause"]
-[ext_resource type="Script" path="res://scripts/soi_indicator.gd" id="7_soi"]
-[ext_resource type="Script" path="res://scripts/home_planet_indicator.gd" id="8_home"]
+[ext_resource type="Script" uid="uid://f7mrrr6icy8m" path="res://scripts/level_loader.gd" id="5_loader"]
+[ext_resource type="Script" uid="uid://b18latwi12xlw" path="res://scripts/pause_menu.gd" id="6_pause"]
+[ext_resource type="Script" uid="uid://do5ugnxc5aic3" path="res://scripts/soi_indicator.gd" id="7_soi"]
+[ext_resource type="Script" uid="uid://dr2kh060lxw80" path="res://scripts/home_planet_indicator.gd" id="8_home"]
 [ext_resource type="PackedScene" path="res://scenes/post_processing_layer.tscn" id="9_postproc"]
 
-[node name="level" type="Node2D"]
+[node name="level" type="Node2D" unique_id=1951272732]
 
-[node name="LevelController" type="Node" parent="."]
+[node name="LevelController" type="Node" parent="." unique_id=1120002816]
 script = ExtResource("1_lctrl")
 
-[node name="SoiIndicator" type="Node2D" parent="."]
+[node name="SoiIndicator" type="Node2D" parent="." unique_id=1210391002]
 script = ExtResource("7_soi")
 
-[node name="HomePlanetIndicator" type="Node2D" parent="."]
+[node name="HomePlanetIndicator" type="Node2D" parent="." unique_id=2062187315]
 script = ExtResource("8_home")
 
-[node name="SunContainer" type="Node2D" parent="."]
+[node name="SunContainer" type="Node2D" parent="." unique_id=809324626]
 
-[node name="BodyContainer" type="Node2D" parent="."]
+[node name="BodyContainer" type="Node2D" parent="." unique_id=869375386]
 
-[node name="rocket" parent="." instance=ExtResource("2_rocket")]
+[node name="rocket" parent="." unique_id=679082977 instance=ExtResource("2_rocket")]
 
-[node name="rocketCamera" type="Camera2D" parent="rocket"]
+[node name="rocketCamera" type="Camera2D" parent="rocket" unique_id=593380928]
 zoom = Vector2(0.5, 0.5)
 script = ExtResource("4_rcam")
 
-[node name="hud" parent="." instance=ExtResource("3_hud")]
+[node name="hud" parent="." unique_id=1279739823 instance=ExtResource("3_hud")]
 
-[node name="LevelLoader" type="Node" parent="."]
+[node name="LevelLoader" type="Node" parent="." unique_id=384790024]
 script = ExtResource("5_loader")
 
-[node name="PauseMenu" type="CanvasLayer" parent="."]
+[node name="PauseMenu" type="CanvasLayer" parent="." unique_id=1921413632]
 script = ExtResource("6_pause")
 
-[node name="PostProcessingLayer" parent="." instance=ExtResource("9_postproc")]
+[node name="PostProcessingLayer" parent="." unique_id=70396446 instance=ExtResource("9_postproc")]

@@ -1,16 +1,16 @@
 // Post-processing shader for Astro Rescue.
 //
 // Runs on every screen pixel AFTER the scene is rendered, applying
-// visual effects (vignette, bloom, etc.) before the final image is
-// shown. Each effect lives in this single shader — keeps things
-// simple and avoids multi-pass complexity for V1.
+// the vignette effect before the final image is shown.
 //
-// Effects:
-//   - Vignette (Phase 2): darkens screen corners, focuses eye to
-//     center. Tunable via VisualSettings.get_vignette_intensity().
-//   - Bloom (Phase 3): adds glow around bright objects — sun
-//     strongly, planets weakly ("planetshine"). Not yet
-//     implemented; see Astro-Rescue.md TODO entry.
+// Vignette: darkens screen corners, focuses eye to center. Tunable
+// via VisualSettings.get_vignette_intensity(), pushed each frame
+// from scripts/post_processing_layer.gd.
+//
+// The shader runs on a CanvasLayer with a full-rect ColorRect that
+// uses this shader as its ShaderMaterial. The shader samples the
+// rendered scene via `screen_texture` (hint_screen_texture uniform)
+// and writes the post-processed result via COLOR.
 
 shader_type canvas_item;
 render_mode unshaded;
@@ -25,13 +25,14 @@ render_mode unshaded;
 uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear;
 
 // Vignette strength. 0 = no vignette (passthrough), 1 = strong
-// vignette (corners near black). Default 0.3 = subtle.
-//
-// Driven by VisualSettings.get_vignette_intensity() via the script
-// at scripts/post_processing_layer.gd, which polls each frame and
+// vignette (corners near black). Default 0.3 = subtle: visible
+// without being in-your-face. Driven by VisualSettings
+// .get_vignette_intensity() via the script at
+// scripts/post_processing_layer.gd, which polls each frame and
 // pushes the value into the ShaderMaterial's uniform. The user
 // controls it via the Vignette intensity slider in Settings → Visual.
 uniform float vignette_intensity : hint_range(0.0, 1.0) = 0.3;
+
 
 void fragment() {
 	vec4 color = texture(screen_texture, SCREEN_UV);

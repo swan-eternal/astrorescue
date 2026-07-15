@@ -107,9 +107,9 @@ func _on_show_soi_toggled(pressed: bool) -> void:
 func _on_vignette_changed(value: float) -> void:
 	# Snap to slider step to keep the saved config file clean (no
 	# floating-point drift from sub-step values).
-	var snapped: float = snappedf(value, _vignette_slider.step)
-	VisualSettings.set_vignette_intensity(snapped)
-	_update_vignette_label(snapped)
+	var snapped_value: float = snappedf(value, _vignette_slider.step)
+	VisualSettings.set_vignette_intensity(snapped_value)
+	_update_vignette_label(snapped_value)
 
 
 ## Format and write the slider's current value into the readout
