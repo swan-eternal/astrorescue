@@ -1,11 +1,18 @@
 // Post-processing shader for Astro Rescue.
 //
 // Runs on every screen pixel AFTER the scene is rendered, applying
-// the vignette effect before the final image is shown.
+// the vignette + chromatic aberration effects before the final
+// image is shown.
 //
 // Vignette: darkens screen corners, focuses eye to center. Tunable
 // via VisualSettings.get_vignette_intensity(), pushed each frame
 // from scripts/post_processing_layer.gd.
+//
+// Chromatic aberration: samples R and B channels at opposite
+// horizontal screen offsets, simulating lens chromatic dispersion.
+// On/off toggle via VisualSettings.get_chromatic_aberration_enabled().
+// Offset is hardcoded (see uniform comment) — promote to a tunable
+// uniform + slider if we ever want intensity control.
 //
 // The shader runs on a CanvasLayer with a full-rect ColorRect that
 // uses this shader as its ShaderMaterial. The shader samples the
@@ -33,9 +40,33 @@ uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_l
 // controls it via the Vignette intensity slider in Settings → Visual.
 uniform float vignette_intensity : hint_range(0.0, 1.0) = 0.3;
 
+// Chromatic aberration toggle. When true, samples R and B at
+// slightly different horizontal screen positions to simulate lens
+// chromatic dispersion. Driven by the Chromatic Aberration
+// checkbox in Settings → Visual, persisted in
+// user://visual_settings.cfg, pushed each frame from
+// scripts/post_processing_layer.gd.
+//
+// Offset is hardcoded at 0.001 (~0.1% of screen width — subtle,
+// reads as polish rather than dramatic effect). Promote this to a
+// uniform with a Visual tab slider if we want intensity tuning.
+uniform bool chromatic_aberration_enabled = true;
+
 
 void fragment() {
 	vec4 color = texture(screen_texture, SCREEN_UV);
+
+	// Chromatic aberration: sample R and B at opposite horizontal
+	// offsets (G stays centered). Symmetric, reads as subtle lens
+	// dispersion — adds a "space arcade" polish layer. Applied
+	// before vignette so corner-darkening composes on top of the
+	// CA-shifted pixels rather than re-sampling already-shifted
+	// channels (which would mix offset with offset).
+	if (chromatic_aberration_enabled) {
+		vec2 ca_offset = vec2(0.001, 0.0);
+		color.r = texture(screen_texture, SCREEN_UV + ca_offset).r;
+		color.b = texture(screen_texture, SCREEN_UV - ca_offset).b;
+	}
 
 	// Vignette: darken the corners, focus the eye to the center.
 	// SCREEN_UV is in [0, 1] across the screen. Distance from center

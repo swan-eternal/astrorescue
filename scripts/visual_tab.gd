@@ -12,6 +12,7 @@ extends Control
 # Per-toggle UI handles, populated in _build_ui; read/written by the
 # toggle callback.
 var _show_soi: CheckBox
+var _chromatic_aberration: CheckBox
 var _vignette_slider: HSlider
 var _vignette_value_label: Label
 
@@ -40,6 +41,14 @@ func _build_ui() -> void:
 	_show_soi.text = "Show Planet SOI"
 	_show_soi.toggled.connect(_on_show_soi_toggled)
 	vbox.add_child(_show_soi)
+
+	# Chromatic aberration — second of two checkboxes (grouped with
+	# SOI above). On by default; toggle in the menu if the effect is
+	# not to taste.
+	_chromatic_aberration = CheckBox.new()
+	_chromatic_aberration.text = "Chromatic Aberration"
+	_chromatic_aberration.toggled.connect(_on_chromatic_aberration_toggled)
+	vbox.add_child(_chromatic_aberration)
 
 	# Vignette intensity row: label + HSlider + numeric readout in
 	# an HBoxContainer so the readout sits to the right of the slider.
@@ -82,6 +91,10 @@ func _refresh_from_state() -> void:
 	_show_soi.button_pressed = VisualSettings.is_show_soi()
 	_show_soi.set_block_signals(false)
 
+	_chromatic_aberration.set_block_signals(true)
+	_chromatic_aberration.button_pressed = VisualSettings.get_chromatic_aberration_enabled()
+	_chromatic_aberration.set_block_signals(false)
+
 	# Same pattern for the vignette slider — programmatic value set
 	# without firing value_changed.
 	var vignette_value: float = VisualSettings.get_vignette_intensity()
@@ -97,6 +110,15 @@ func _refresh_from_state() -> void:
 ## needed here.
 func _on_show_soi_toggled(pressed: bool) -> void:
 	VisualSettings.set_show_soi(pressed)
+
+
+## Chromatic aberration checkbox toggled: push state to
+## VisualSettings. The post-processing script reads
+## `VisualSettings.get_chromatic_aberration_enabled()` each frame
+## and updates the shader uniform, so the effect changes on the
+## next draw — no explicit signal wiring needed here.
+func _on_chromatic_aberration_toggled(pressed: bool) -> void:
+	VisualSettings.set_chromatic_aberration_enabled(pressed)
 
 
 ## Vignette slider changed: push state to VisualSettings. Fires

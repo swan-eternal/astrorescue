@@ -36,11 +36,21 @@ const DEFAULT_SHOW_SOI: bool = false
 # Settings → Visual, which persists the value via set_vignette_intensity.
 const DEFAULT_VIGNETTE_INTENSITY: float = 0.3
 
+# Default for `chromatic_aberration_enabled` — whether the
+# post-processing shader applies the chromatic-aberration effect
+# (samples R/B at slightly different horizontal positions, simulating
+# lens chromatic dispersion). Off = unchanged colors; on = subtle
+# 0.1%-offset shift that reads as "space arcade" polish. Driven
+# by the Chromatic Aberration checkbox in Settings → Visual,
+# persisted via set_chromatic_aberration_enabled.
+const DEFAULT_CHROMATIC_ABERRATION_ENABLED: bool = true
+
 
 # Internal state. Adding a new visual toggle = add a field here + a
 # `get_*` / `set_*` accessor pair below.
 var _show_soi: bool = DEFAULT_SHOW_SOI
 var _vignette_intensity: float = DEFAULT_VIGNETTE_INTENSITY
+var _chromatic_aberration_enabled: bool = DEFAULT_CHROMATIC_ABERRATION_ENABLED
 
 
 ## Load persisted settings (if any). Missing file = defaults.
@@ -81,6 +91,22 @@ func set_vignette_intensity(value: float) -> void:
 	_save_to_disk()
 
 
+## Public API: get the current `chromatic_aberration_enabled` value.
+## Read by scripts/post_processing_layer.gd each frame and pushed
+## to the shader's `chromatic_aberration_enabled` uniform.
+func get_chromatic_aberration_enabled() -> bool:
+	return _chromatic_aberration_enabled
+
+
+## Public API: set `chromatic_aberration_enabled`, persist
+## immediately. Same per-frame-poll consumption pattern as the other
+## visual toggles — the shader script reads this next frame, no
+## signal wiring needed.
+func set_chromatic_aberration_enabled(value: bool) -> void:
+	_chromatic_aberration_enabled = value
+	_save_to_disk()
+
+
 # --- internals ---
 
 
@@ -96,12 +122,15 @@ func _load_from_disk() -> void:
 		_show_soi = bool(cfg.get_value(SECTION, "show_soi", DEFAULT_SHOW_SOI))
 	if cfg.has_section_key(SECTION, "vignette_intensity"):
 		_vignette_intensity = float(cfg.get_value(SECTION, "vignette_intensity", DEFAULT_VIGNETTE_INTENSITY))
+	if cfg.has_section_key(SECTION, "chromatic_aberration_enabled"):
+		_chromatic_aberration_enabled = bool(cfg.get_value(SECTION, "chromatic_aberration_enabled", DEFAULT_CHROMATIC_ABERRATION_ENABLED))
 
 
 func _save_to_disk() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value(SECTION, "show_soi", _show_soi)
 	cfg.set_value(SECTION, "vignette_intensity", _vignette_intensity)
+	cfg.set_value(SECTION, "chromatic_aberration_enabled", _chromatic_aberration_enabled)
 	var err := cfg.save(SETTINGS_PATH)
 	if err != OK:
 		push_warning("VisualSettings: could not save %s (err %d)." % [SETTINGS_PATH, err])
