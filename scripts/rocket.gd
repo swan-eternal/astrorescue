@@ -70,8 +70,8 @@ extends Node2D
 @export var throttle: float = 0.0
 
 ## How fast `throttle` changes per real-second when Shift/Ctrl is held.
-## 0.5 = full sweep in 2 seconds (KSP-ish feel). Higher = snappier.
-@export var throttle_change_rate: float = 0.5
+## 1.0 = full sweep in 1 second. Higher = snappier.
+@export var throttle_change_rate: float = 1.0
 
 ## Threshold below which throttle is treated as "off" — gates the
 ## "unstick from landed" check and the audio deadzone. Matches
